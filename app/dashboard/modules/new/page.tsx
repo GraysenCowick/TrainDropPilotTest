@@ -85,20 +85,81 @@ function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
 }
 
 async function extractAudioFromVideo(file: File): Promise<File> {
-  const arrayBuffer = await file.arrayBuffer();
-  // Decode audio track — much faster than real-time
-  const tmpCtx = new AudioContext();
-  const raw = await tmpCtx.decodeAudioData(arrayBuffer);
-  await tmpCtx.close();
-  // Resample to 16 kHz mono
-  const TARGET_RATE = 16_000;
-  const offCtx = new OfflineAudioContext(1, Math.ceil(raw.duration * TARGET_RATE), TARGET_RATE);
-  const src = offCtx.createBufferSource();
-  src.buffer = raw;
-  src.connect(offCtx.destination);
-  src.start(0);
-  const resampled = await offCtx.startRendering();
-  return new File([encodeWav(resampled)], "audio.wav", { type: "audio/wav" });
+  // ── Fast path (Chrome): decodeAudioData handles MP4/MOV containers ───────
+  // Safari refuses to decode video containers this way, so we fall through.
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const tmpCtx = new AudioContext();
+    const raw = await tmpCtx.decodeAudioData(arrayBuffer.slice(0));
+    await tmpCtx.close();
+
+    const TARGET_RATE = 16_000;
+    const offCtx = new OfflineAudioContext(1, Math.ceil(raw.duration * TARGET_RATE), TARGET_RATE);
+    const src = offCtx.createBufferSource();
+    src.buffer = raw;
+    src.connect(offCtx.destination);
+    src.start(0);
+    const resampled = await offCtx.startRendering();
+    return new File([encodeWav(resampled)], "audio.wav", { type: "audio/wav" });
+  } catch {
+    // Fall through to video-element fallback
+  }
+
+  // ── Fallback (Safari + all browsers): route video through AudioContext ────
+  // Uses the browser's native video decoder — works for any format the browser
+  // can play. Runs in real-time (a 30s video takes ~30s to extract).
+  return new Promise<File>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
+    document.body.appendChild(video);
+    video.src = url;
+    video.preload = "auto";
+
+    const cleanup = () => {
+      try { document.body.removeChild(video); } catch { /* already removed */ }
+      URL.revokeObjectURL(url);
+    };
+
+    video.addEventListener("error", () => {
+      cleanup();
+      reject(new Error("Browser cannot decode this video format"));
+    });
+
+    video.addEventListener("loadedmetadata", () => {
+      const audioCtx = new AudioContext({ sampleRate: 16_000 });
+      const source = audioCtx.createMediaElementSource(video);
+      const dest = audioCtx.createMediaStreamDestination();
+      source.connect(dest);
+      // Also connect to destination so the browser drives playback
+      source.connect(audioCtx.destination);
+
+      // Pick best supported audio format (Safari uses mp4, Chrome uses webm)
+      let mimeType = "";
+      for (const m of ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"]) {
+        if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; }
+      }
+
+      const recorder = mimeType
+        ? new MediaRecorder(dest.stream, { mimeType })
+        : new MediaRecorder(dest.stream);
+      const chunks: BlobPart[] = [];
+
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = () => {
+        cleanup();
+        audioCtx.close();
+        const type = recorder.mimeType;
+        const ext = type.includes("mp4") ? "m4a" : "webm";
+        resolve(new File(chunks, `audio.${ext}`, { type }));
+      };
+
+      recorder.start();
+      video.play().then(() => {
+        video.addEventListener("ended", () => recorder.stop());
+      }).catch((err) => { cleanup(); reject(err); });
+    });
+  });
 }
 
 export default function NewModulePage() {

@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
 import { runVideoPipeline } from "@/lib/video/pipeline";
 
-export const maxDuration = 60; // 60s for Claude API call
+export const maxDuration = 300; // 5 min — pipeline needs time for transcription + Claude
 
 export async function GET() {
   const supabase = await createClient();
@@ -88,8 +88,10 @@ export async function POST(request: NextRequest) {
         .eq("id", module.id);
     }
   } else {
-    // Video: kick off pipeline in the background (fire-and-forget)
-    void runVideoPipeline(module.id, original_video_url);
+    // Video: run pipeline after the response is sent.
+    // `after()` keeps the Vercel function alive until the pipeline finishes —
+    // without it, the serverless function would be terminated immediately.
+    after(() => runVideoPipeline(module.id, original_video_url));
   }
 
   return NextResponse.json({ id: module.id }, { status: 201 });

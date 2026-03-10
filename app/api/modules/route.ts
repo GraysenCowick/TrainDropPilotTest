@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
-import { startTranscription } from "@/lib/ai/whisper";
+import { runVideoPipeline } from "@/lib/video/pipeline";
 
 export const maxDuration = 60;
 
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { input_type, title, raw_notes, original_video_url } = body;
+  const { input_type, title, raw_notes, original_video_url, audio_url } = body;
 
   if (!input_type || !["text", "video"].includes(input_type)) {
     return NextResponse.json({ error: "Invalid input_type" }, { status: 400 });
@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "raw_notes required for text modules" }, { status: 400 });
   }
 
-  if (input_type === "video" && !original_video_url) {
-    return NextResponse.json({ error: "original_video_url required for video modules" }, { status: 400 });
+  if (input_type === "video" && (!original_video_url || !audio_url)) {
+    return NextResponse.json({ error: "original_video_url and audio_url required for video modules" }, { status: 400 });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (input_type === "text") {
-    // Text: process synchronously — Claude is fast (~10–15s)
+    // Text: process synchronously — Claude is fast enough (~10–15s)
     try {
       const result = await generateSOP(raw_notes);
       await admin
@@ -85,26 +85,10 @@ export async function POST(request: NextRequest) {
         .eq("id", module.id);
     }
   } else {
-    // Video: submit URL to AssemblyAI (< 1s), store job ID, return immediately.
-    // The GET /api/modules/[id] polling endpoint will detect when transcription
-    // finishes and run the Claude analysis stage in the same request.
-    try {
-      const jobId = await startTranscription(original_video_url);
-      await admin
-        .from("modules")
-        .update({
-          transcription_job_id: jobId,
-          processing_step: "transcribing",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", module.id);
-    } catch (err) {
-      console.error("Failed to start transcription:", err);
-      await admin
-        .from("modules")
-        .update({ status: "error", updated_at: new Date().toISOString() })
-        .eq("id", module.id);
-    }
+    // Video: kick off pipeline after response is sent.
+    // The browser extracted audio client-side (WAV, ~1 MB/min) so Whisper
+    // receives a tiny file and transcribes fast. Total pipeline time: ~30s.
+    after(() => runVideoPipeline(module.id, original_video_url, audio_url));
   }
 
   return NextResponse.json({ id: module.id }, { status: 201 });

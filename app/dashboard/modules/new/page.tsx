@@ -46,6 +46,61 @@ function stageIndex(s: UiStage) {
   return STAGE_ORDER.indexOf(s);
 }
 
+// ── Audio extraction utilities (runs entirely in the browser) ─────────────────
+// Extracts the audio track from a video file and re-encodes it as 16 kHz mono
+// WAV. This produces a tiny file (~1 MB/min) so Whisper's 25 MB limit is never
+// hit regardless of how large the original video is.
+
+function writeStr(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
+  const numSamples = audioBuffer.length;
+  const sampleRate = audioBuffer.sampleRate;
+  const dataLen = numSamples * 2; // 16-bit mono
+  const buf = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buf);
+  writeStr(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(view, 8, "WAVE");
+  writeStr(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(view, 36, "data");
+  view.setUint32(40, dataLen, true);
+  const pcm = audioBuffer.getChannelData(0);
+  let offset = 44;
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(offset, s * 0x7fff, true);
+    offset += 2;
+  }
+  return buf;
+}
+
+async function extractAudioFromVideo(file: File): Promise<File> {
+  const arrayBuffer = await file.arrayBuffer();
+  // Decode audio track — much faster than real-time
+  const tmpCtx = new AudioContext();
+  const raw = await tmpCtx.decodeAudioData(arrayBuffer);
+  await tmpCtx.close();
+  // Resample to 16 kHz mono
+  const TARGET_RATE = 16_000;
+  const offCtx = new OfflineAudioContext(1, Math.ceil(raw.duration * TARGET_RATE), TARGET_RATE);
+  const src = offCtx.createBufferSource();
+  src.buffer = raw;
+  src.connect(offCtx.destination);
+  src.start(0);
+  const resampled = await offCtx.startRendering();
+  return new File([encodeWav(resampled)], "audio.wav", { type: "audio/wav" });
+}
+
 export default function NewModulePage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -140,53 +195,66 @@ export default function NewModulePage() {
   async function runVideoFlow() {
     if (!videoFile) throw new Error("Missing file");
 
-    // Reject files over 500 MB before even hitting Supabase
-    const MAX_BYTES = 500 * 1024 * 1024;
-    if (videoFile.size > MAX_BYTES) {
-      throw new Error(
-        `File too large (${(videoFile.size / 1024 / 1024).toFixed(0)} MB). Maximum allowed size is 500 MB.`
-      );
+    if (videoFile.size > 500 * 1024 * 1024) {
+      throw new Error(`File too large (${(videoFile.size / 1024 / 1024).toFixed(0)} MB). Max 500 MB.`);
     }
 
-    // ── Step 1: Get a presigned upload token from the server ─────────────────
-    // The server returns path + token. The browser then uses the Supabase SDK
-    // to upload directly to Supabase, bypassing Vercel's 4.5 MB body limit.
-    const urlRes = await fetch("/api/upload-video", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: videoFile.name }),
-    });
-
-    if (!urlRes.ok) {
-      const err = await urlRes.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to prepare upload");
+    // ── Step 1: Extract audio from the video in the browser ──────────────────
+    // Produces a tiny WAV file (~1 MB/min at 16 kHz mono).
+    // Whisper receives this small file instead of the full video — no 25 MB limit hit.
+    let audioFile: File;
+    try {
+      audioFile = await extractAudioFromVideo(videoFile);
+    } catch {
+      throw new Error("Could not read audio from this video. Please try a different file format.");
     }
 
-    const { path: uploadPath, token, publicUrl } = await urlRes.json();
+    // ── Step 2: Get presigned upload URLs for video + audio ───────────────────
+    const [videoUrlRes, audioUrlRes] = await Promise.all([
+      fetch("/api/upload-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: videoFile.name }),
+      }),
+      fetch("/api/upload-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: "audio.wav" }),
+      }),
+    ]);
 
-    // ── Step 2: Upload file directly to Supabase via SDK ─────────────────────
-    // uploadToSignedUrl sends the required apikey + auth headers automatically.
+    if (!videoUrlRes.ok || !audioUrlRes.ok) {
+      throw new Error("Failed to prepare upload");
+    }
+
+    const { path: videoPath, token: videoToken, publicUrl: videoPublicUrl } = await videoUrlRes.json();
+    const { path: audioPath, token: audioToken, publicUrl: audioPublicUrl } = await audioUrlRes.json();
+
+    // ── Step 3: Upload video + audio directly to Supabase ────────────────────
     const supabase = createClient();
-    const { error: uploadError } = await supabase.storage
-      .from("processed")
-      .uploadToSignedUrl(uploadPath, token, videoFile, {
+    const [videoUpload, audioUpload] = await Promise.all([
+      supabase.storage.from("processed").uploadToSignedUrl(videoPath, videoToken, videoFile, {
         contentType: videoFile.type || "video/mp4",
-      });
+      }),
+      supabase.storage.from("processed").uploadToSignedUrl(audioPath, audioToken, audioFile, {
+        contentType: "audio/wav",
+      }),
+    ]);
 
-    if (uploadError) {
-      throw new Error(`Upload failed: ${uploadError.message}`);
-    }
+    if (videoUpload.error) throw new Error(`Video upload failed: ${videoUpload.error.message}`);
+    if (audioUpload.error) throw new Error(`Audio upload failed: ${audioUpload.error.message}`);
 
     setProgress((p) => ({ ...p, uploadProgress: 100 }));
 
-    // ── Step 3: Create module row and trigger pipeline ────────────────────────
+    // ── Step 4: Create module row and trigger pipeline ────────────────────────
     const res = await fetch("/api/modules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         input_type: "video",
         title: title.trim() || "Untitled Training Video",
-        original_video_url: publicUrl,
+        original_video_url: videoPublicUrl,
+        audio_url: audioPublicUrl,
       }),
     });
 
@@ -249,7 +317,7 @@ export default function NewModulePage() {
       finalizing: 90,
     };
     const stageLabel: Partial<Record<UiStage, string>> = {
-      uploading: "Compressing & uploading video...",
+      uploading: "Extracting audio & uploading video...",
       transcribing: "Transcribing audio...",
       analyzing: tab === "video" ? "Generating training module..." : "Generating SOP...",
       finalizing: "Finalizing...",

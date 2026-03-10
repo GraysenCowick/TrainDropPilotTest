@@ -140,6 +140,14 @@ export default function NewModulePage() {
   async function runVideoFlow() {
     if (!videoFile) throw new Error("Missing file");
 
+    // Reject files over 500 MB before even hitting Supabase
+    const MAX_BYTES = 500 * 1024 * 1024;
+    if (videoFile.size > MAX_BYTES) {
+      throw new Error(
+        `File too large (${(videoFile.size / 1024 / 1024).toFixed(0)} MB). Maximum allowed size is 500 MB.`
+      );
+    }
+
     // ── Step 1: Get a presigned upload token from the server ─────────────────
     // The server returns path + token. The browser then uses the Supabase SDK
     // to upload directly to Supabase, bypassing Vercel's 4.5 MB body limit.

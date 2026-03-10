@@ -10,7 +10,7 @@ function getAdminClient() {
   );
 }
 
-export const maxDuration = 60;
+export const maxDuration = 10;
 
 export async function POST(request: NextRequest) {
   const supabase = await createServerClient();
@@ -19,43 +19,37 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const formData = await request.formData();
-  const file = formData.get("video") as File;
-  if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  const body = await request.json();
+  const { filename } = body;
+  if (!filename) return NextResponse.json({ error: "filename required" }, { status: 400 });
 
-  try {
-    // Upload original file directly to Supabase — no server-side FFmpeg compression.
-    // FFmpeg binaries are unreliable in Vercel serverless. Original iPhone/Android
-    // videos (H.264/AAC) are already browser-compatible. Safari compatibility is
-    // handled by the device recording in a supported format natively.
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const ext = file.name.split(".").pop() || "mp4";
-    const filePath = `videos/${user.id}/${randomUUID()}.${ext}`;
+  const ext = (filename as string).split(".").pop()?.toLowerCase() || "mp4";
+  const filePath = `videos/${user.id}/${randomUUID()}.${ext}`;
 
-    const admin = getAdminClient();
+  const admin = getAdminClient();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: uploadError } = await (admin as any).storage
-      .from("processed")
-      .upload(filePath, buffer, {
-        contentType: file.type || "video/mp4",
-        cacheControl: "3600",
-        upsert: false,
-      });
+  // Generate a presigned upload URL — the browser uploads the file directly
+  // to Supabase storage, bypassing Vercel's 4.5 MB request-body limit.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any).storage
+    .from("processed")
+    .createSignedUploadUrl(filePath);
 
-    if (uploadError) throw new Error(uploadError.message);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: urlData } = (admin as any).storage
-      .from("processed")
-      .getPublicUrl(filePath);
-
-    if (!urlData?.publicUrl) throw new Error("Failed to get public URL");
-
-    return NextResponse.json({ signedUrl: urlData.publicUrl });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[upload-video] failed:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  if (error || !data?.signedUrl) {
+    console.error("[upload-video] createSignedUploadUrl failed:", error?.message);
+    return NextResponse.json(
+      { error: error?.message || "Failed to create upload URL" },
+      { status: 500 }
+    );
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: urlData } = (admin as any).storage
+    .from("processed")
+    .getPublicUrl(filePath);
+
+  return NextResponse.json({
+    uploadUrl: data.signedUrl,
+    publicUrl: urlData.publicUrl,
+  });
 }

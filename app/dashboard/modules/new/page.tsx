@@ -139,38 +139,49 @@ export default function NewModulePage() {
   async function runVideoFlow() {
     if (!videoFile) throw new Error("Missing file");
 
-    // ── Step 1: Compress & upload via server ─────────────────────────────────
-    // Server-side ffmpeg compresses to 720p H.264 before storing in Supabase,
-    // keeping files well under the 50MB storage limit.
-    const formData = new FormData();
-    formData.append("video", videoFile);
-
-    const uploadRes = await fetch("/api/upload-video", {
+    // ── Step 1: Get a presigned upload URL from the server ────────────────────
+    // The server returns a short-lived Supabase signed URL. The browser then
+    // uploads the file DIRECTLY to Supabase, bypassing Vercel's 4.5 MB
+    // serverless request-body limit entirely.
+    const urlRes = await fetch("/api/upload-video", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: videoFile.name }),
     });
 
-    if (!uploadRes.ok) {
-      const err = await uploadRes.json();
-      throw new Error(err.error || "Upload failed");
+    if (!urlRes.ok) {
+      const err = await urlRes.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to prepare upload");
     }
 
-    const { signedUrl } = await uploadRes.json();
+    const { uploadUrl, publicUrl } = await urlRes.json();
+
+    // ── Step 2: Upload file directly to Supabase ─────────────────────────────
+    const putRes = await fetch(uploadUrl, {
+      method: "PUT",
+      body: videoFile,
+      headers: { "content-type": videoFile.type || "video/mp4" },
+    });
+
+    if (!putRes.ok) {
+      throw new Error(`File upload failed (${putRes.status})`);
+    }
+
     setProgress((p) => ({ ...p, uploadProgress: 100 }));
 
-    // ── Step 2: Create module row + fire Inngest ─────────────────────────────
+    // ── Step 3: Create module row and trigger pipeline ────────────────────────
     const res = await fetch("/api/modules", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         input_type: "video",
         title: title.trim() || "Untitled Training Video",
-        original_video_url: signedUrl,
+        original_video_url: publicUrl,
       }),
     });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       throw new Error(err.error || "Failed to create module");
     }
 

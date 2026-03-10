@@ -54,7 +54,6 @@ export default function NewModulePage() {
   const [title, setTitle] = useState("");
   const [rawNotes, setRawNotes] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [userId, setUserId] = useState("");
   const [progress, setProgress] = useState<ProgressState>({
     active: false,
     stage: "uploading",

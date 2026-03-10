@@ -7,8 +7,6 @@ import {
   Zap,
   CheckCircle2,
   ArrowRight,
-  Users,
-  Smartphone,
   Layers,
   PenLine,
   Link2,

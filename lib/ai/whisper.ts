@@ -1,10 +1,8 @@
-import OpenAI from "openai";
-import fs from "fs";
-import path from "path";
-import os from "os";
+import { AssemblyAI } from "assemblyai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
 
+// Keep same interfaces so the rest of the codebase doesn't change
 export interface TranscriptSegment {
   text: string;
   start: number;
@@ -14,84 +12,69 @@ export interface TranscriptSegment {
 export interface WhisperTranscript {
   text: string;
   segments: TranscriptSegment[];
-  words: Array<{
-    word: string;
-    start: number;
-    end: number;
-  }>;
+  words: Array<{ word: string; start: number; end: number }>;
   duration: number;
 }
 
-// Verbose transcription type not fully exposed in openai SDK
-interface VerboseTranscription {
-  text: string;
-  duration?: number;
-  words?: Array<{ word: string; start: number; end: number }>;
-  segments?: Array<{ text: string; start: number; end: number }>;
+/**
+ * Submit a video/audio URL to AssemblyAI for async transcription.
+ * Returns the job ID immediately (< 1s). No file size limit.
+ */
+export async function startTranscription(videoUrl: string): Promise<string> {
+  const transcript = await client.transcripts.submit({
+    audio_url: videoUrl,
+    punctuate: true,
+    format_text: true,
+  });
+  return transcript.id;
 }
 
 /**
- * Download the video file and transcribe directly with OpenAI Whisper.
- * Whisper accepts video files natively (mp4, mov, m4a, etc.) up to 25 MB.
- * FFmpeg audio extraction is skipped — it requires native binaries that
- * are unreliable in Vercel serverless environments.
+ * Check the status of an AssemblyAI transcription job.
+ * Returns the result (in WhisperTranscript format) when completed.
  */
-export async function transcribeVideo(
-  videoUrl: string
-): Promise<WhisperTranscript> {
-  const tmpDir = os.tmpdir();
-  const id = Date.now();
+export async function getTranscription(jobId: string): Promise<{
+  status: "queued" | "processing" | "completed" | "error";
+  result?: WhisperTranscript;
+  errorMessage?: string;
+}> {
+  const transcript = await client.transcripts.get(jobId);
 
-  // Determine extension from URL
-  const urlPath = new URL(videoUrl).pathname;
-  const ext = path.extname(urlPath) || ".mp4";
-  const videoFile = path.join(tmpDir, `td-video-${id}${ext}`);
-
-  // ── 1. Download the video ──────────────────────────────────────────────────
-  const response = await fetch(videoUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download video: ${response.status} ${response.statusText}`);
-  }
-  const buffer = await response.arrayBuffer();
-
-  if (buffer.byteLength > 24 * 1024 * 1024) {
-    throw new Error(
-      `Video file is ${Math.round(buffer.byteLength / 1024 / 1024)}MB — please keep training videos under 24MB (roughly 2–3 minutes at standard quality).`
-    );
+  if (transcript.status === "error") {
+    return { status: "error", errorMessage: transcript.error ?? "Transcription failed" };
   }
 
-  fs.writeFileSync(videoFile, Buffer.from(buffer));
-
-  try {
-    // ── 2. Transcribe directly with OpenAI Whisper ───────────────────────────
-    const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(videoFile),
-      model: "whisper-1",
-      response_format: "verbose_json",
-      timestamp_granularities: ["word", "segment"],
-    }) as unknown as VerboseTranscription;
-
-    const segments = (transcription.segments ?? []).map((s) => ({
-      text: s.text,
-      start: s.start,
-      end: s.end,
+  if (transcript.status === "completed") {
+    // AssemblyAI word timestamps are in milliseconds → convert to seconds
+    const words = (transcript.words ?? []).map((w) => ({
+      word: w.text,
+      start: w.start / 1000,
+      end: w.end / 1000,
     }));
 
-    const words = (transcription.words ?? []).map((w) => ({
-      word: w.word,
-      start: w.start,
-      end: w.end,
-    }));
-
-    console.log(`[Whisper] ${segments.length} segments, duration: ${transcription.duration ?? 0}s`);
+    // Group words into ~10-word segments for the chapters/VTT
+    const segments: TranscriptSegment[] = [];
+    const CHUNK = 10;
+    for (let i = 0; i < words.length; i += CHUNK) {
+      const chunk = words.slice(i, i + CHUNK);
+      if (chunk.length === 0) continue;
+      segments.push({
+        text: chunk.map((w) => w.word).join(" "),
+        start: chunk[0].start,
+        end: chunk[chunk.length - 1].end,
+      });
+    }
 
     return {
-      text: transcription.text,
-      segments,
-      words,
-      duration: transcription.duration ?? 0,
+      status: "completed",
+      result: {
+        text: transcript.text ?? "",
+        segments,
+        words,
+        duration: transcript.audio_duration ?? 0,
+      },
     };
-  } finally {
-    fs.unlink(videoFile, () => {});
   }
+
+  return { status: transcript.status as "queued" | "processing" };
 }

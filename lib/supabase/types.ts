@@ -34,6 +34,7 @@ export interface Module {
   sop_content: string | null;
   chapters: unknown;
   processing_step: VideoProcessingStep;
+  transcription_job_id: string | null;
   voiceover_url: string | null;
   vtt_content: string | null;
   share_slug: string | null;
@@ -166,6 +167,7 @@ export interface TrackModuleCompletion {
   -- ALTER TABLE modules ADD COLUMN IF NOT EXISTS processing_step TEXT;
   -- ALTER TABLE modules ADD COLUMN IF NOT EXISTS voiceover_url TEXT;
   -- ALTER TABLE modules ADD COLUMN IF NOT EXISTS vtt_content TEXT;
+  -- ALTER TABLE modules ADD COLUMN IF NOT EXISTS transcription_job_id TEXT;
 
   -- Completions table
   CREATE TABLE completions (

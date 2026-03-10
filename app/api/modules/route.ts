@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
-import { runVideoPipeline } from "@/lib/video/pipeline";
+import { startTranscription } from "@/lib/ai/whisper";
 
-export const maxDuration = 300; // 5 min — pipeline needs time for transcription + Claude
+export const maxDuration = 60;
 
 export async function GET() {
   const supabase = await createClient();
@@ -20,7 +20,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  // Verify auth with the session-cookie client
   const supabase = await createClient();
   const {
     data: { user },
@@ -45,8 +44,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "original_video_url required for video modules" }, { status: 400 });
   }
 
-  // Use service-role client for all DB writes — bypasses RLS while keeping
-  // user identity explicit via user_id in every row we write.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = await createAdminClient() as any;
 
@@ -68,7 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (input_type === "text") {
-    // Text: process synchronously — Claude is fast enough (~10–15s)
+    // Text: process synchronously — Claude is fast (~10–15s)
     try {
       const result = await generateSOP(raw_notes);
       await admin
@@ -88,10 +85,26 @@ export async function POST(request: NextRequest) {
         .eq("id", module.id);
     }
   } else {
-    // Video: run pipeline after the response is sent.
-    // `after()` keeps the Vercel function alive until the pipeline finishes —
-    // without it, the serverless function would be terminated immediately.
-    after(() => runVideoPipeline(module.id, original_video_url));
+    // Video: submit URL to AssemblyAI (< 1s), store job ID, return immediately.
+    // The GET /api/modules/[id] polling endpoint will detect when transcription
+    // finishes and run the Claude analysis stage in the same request.
+    try {
+      const jobId = await startTranscription(original_video_url);
+      await admin
+        .from("modules")
+        .update({
+          transcription_job_id: jobId,
+          processing_step: "transcribing",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", module.id);
+    } catch (err) {
+      console.error("Failed to start transcription:", err);
+      await admin
+        .from("modules")
+        .update({ status: "error", updated_at: new Date().toISOString() })
+        .eq("id", module.id);
+    }
   }
 
   return NextResponse.json({ id: module.id }, { status: 201 });

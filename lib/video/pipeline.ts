@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
-import { transcribeVideo } from "@/lib/ai/whisper";
 import { analyzeTranscript } from "@/lib/ai/claude";
 import { generateVTT } from "@/lib/video/subtitles";
+import type { WhisperTranscript } from "@/lib/ai/whisper";
 
 function getSupabase() {
   return createClient(
@@ -11,37 +11,19 @@ function getSupabase() {
 }
 
 /**
- * Runs the full video processing pipeline:
- *   1. Transcribe audio (Whisper)
- *   2. Analyze transcript (Claude) → title, SOP, chapters
- *   3. Generate VTT captions
- *   4. Finalize — mark module ready
- *
- * Updates processing_step in the DB as each stage starts so the frontend
- * progress UI stays in sync via polling.
- *
- * Fire-and-forget usage:  void runVideoPipeline(moduleId, videoUrl)
+ * Runs the analyze + finalize stages after transcription is complete.
+ * Transcription is handled separately by AssemblyAI (via whisper.ts).
+ * This function runs in ~20-30s — well within Vercel Free's 60s limit.
  */
-export async function runVideoPipeline(
+export async function analyzeAndFinalize(
   moduleId: string,
+  transcript: WhisperTranscript,
   videoUrl: string
 ): Promise<void> {
   const supabase = getSupabase();
 
-  async function markStep(step: string | null) {
-    await supabase
-      .from("modules")
-      .update({ processing_step: step, updated_at: new Date().toISOString() })
-      .eq("id", moduleId);
-  }
-
   try {
-    // ── Step 1: Transcribe ────────────────────────────────────────────────
-    await markStep("transcribing");
-    console.log(`[pipeline] ${moduleId} — transcribing`);
-
-    const transcript = await transcribeVideo(videoUrl);
-
+    // Save transcript
     await supabase
       .from("modules")
       .update({
@@ -50,12 +32,15 @@ export async function runVideoPipeline(
       })
       .eq("id", moduleId);
 
-    // ── Step 2: Analyze with Claude ───────────────────────────────────────
-    await markStep("analyzing");
-    console.log(`[pipeline] ${moduleId} — analyzing transcript`);
-
+    // Analyze with Claude (~20s)
+    console.log(`[pipeline] ${moduleId} — analyzing`);
     const analysis = await analyzeTranscript(transcript.text);
 
+    // Generate VTT captions from word timestamps
+    const vttContent = generateVTT(transcript.words);
+
+    // Finalize
+    console.log(`[pipeline] ${moduleId} — finalizing`);
     await supabase
       .from("modules")
       .update({
@@ -63,20 +48,6 @@ export async function runVideoPipeline(
         cleaned_transcript: analysis.cleaned_transcript,
         sop_content: analysis.sop_content,
         chapters: analysis.chapters as unknown as Record<string, unknown>[],
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", moduleId);
-
-    // ── Step 3: Generate VTT captions ─────────────────────────────────────
-    const vttContent = generateVTT(transcript.words);
-
-    // ── Step 4: Finalize ──────────────────────────────────────────────────
-    await markStep("finalizing");
-    console.log(`[pipeline] ${moduleId} — finalizing`);
-
-    await supabase
-      .from("modules")
-      .update({
         processed_video_url: videoUrl,
         vtt_content: vttContent,
         processing_step: null,

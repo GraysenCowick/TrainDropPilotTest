@@ -1,6 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { getTranscription } from "@/lib/ai/whisper";
+import { analyzeAndFinalize } from "@/lib/video/pipeline";
 import type { Module } from "@/lib/supabase/types";
+
+export const maxDuration = 60;
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -24,6 +28,54 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   if (error || !module) {
     return NextResponse.json({ error: "Module not found" }, { status: 404 });
+  }
+
+  // If transcription is in progress, check AssemblyAI and advance if ready
+  const jobId = (module as unknown as Record<string, unknown>).transcription_job_id as string | null;
+  if (module.status === "processing" && module.processing_step === "transcribing" && jobId) {
+    try {
+      const { status: txStatus, result, errorMessage } = await getTranscription(jobId);
+
+      if (txStatus === "error") {
+        const admin = await createAdminClient();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (admin as any).from("modules").update({
+          status: "error",
+          processing_step: null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", id);
+        return NextResponse.json({ ...module, status: "error", processing_step: null });
+      }
+
+      if (txStatus === "completed" && result) {
+        const admin = await createAdminClient();
+
+        // Atomically claim the "analyzing" step — prevents duplicate Claude calls
+        // if multiple polls arrive at the same time.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: claimed } = await (admin as any)
+          .from("modules")
+          .update({ processing_step: "analyzing", updated_at: new Date().toISOString() })
+          .eq("id", id)
+          .eq("processing_step", "transcribing")
+          .select()
+          .single();
+
+        if (claimed) {
+          // We claimed it. Run Claude + finalize after the response is sent.
+          const videoUrl = module.original_video_url ?? "";
+          after(async () => {
+            await analyzeAndFinalize(id, result, videoUrl);
+          });
+        }
+
+        // Return "analyzing" so the frontend shows the next progress stage
+        return NextResponse.json({ ...module, processing_step: "analyzing" });
+      }
+    } catch (err) {
+      console.error("[modules GET] transcription check failed:", err);
+      // Fall through — return current DB state
+    }
   }
 
   return NextResponse.json(module as Module);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { ArrowLeft, FileText, Video, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,10 +140,9 @@ export default function NewModulePage() {
   async function runVideoFlow() {
     if (!videoFile) throw new Error("Missing file");
 
-    // ── Step 1: Get a presigned upload URL from the server ────────────────────
-    // The server returns a short-lived Supabase signed URL. The browser then
-    // uploads the file DIRECTLY to Supabase, bypassing Vercel's 4.5 MB
-    // serverless request-body limit entirely.
+    // ── Step 1: Get a presigned upload token from the server ─────────────────
+    // The server returns path + token. The browser then uses the Supabase SDK
+    // to upload directly to Supabase, bypassing Vercel's 4.5 MB body limit.
     const urlRes = await fetch("/api/upload-video", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -154,17 +154,19 @@ export default function NewModulePage() {
       throw new Error(err.error || "Failed to prepare upload");
     }
 
-    const { uploadUrl, publicUrl } = await urlRes.json();
+    const { path: uploadPath, token, publicUrl } = await urlRes.json();
 
-    // ── Step 2: Upload file directly to Supabase ─────────────────────────────
-    const putRes = await fetch(uploadUrl, {
-      method: "PUT",
-      body: videoFile,
-      headers: { "content-type": videoFile.type || "video/mp4" },
-    });
+    // ── Step 2: Upload file directly to Supabase via SDK ─────────────────────
+    // uploadToSignedUrl sends the required apikey + auth headers automatically.
+    const supabase = createClient();
+    const { error: uploadError } = await supabase.storage
+      .from("processed")
+      .uploadToSignedUrl(uploadPath, token, videoFile, {
+        contentType: videoFile.type || "video/mp4",
+      });
 
-    if (!putRes.ok) {
-      throw new Error(`File upload failed (${putRes.status})`);
+    if (uploadError) {
+      throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
     setProgress((p) => ({ ...p, uploadProgress: 100 }));

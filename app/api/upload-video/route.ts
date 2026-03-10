@@ -48,8 +48,11 @@ export async function POST(request: NextRequest) {
     .from("processed")
     .getPublicUrl(filePath);
 
+  // Return path + token separately so the browser SDK can call uploadToSignedUrl,
+  // which sends the required apikey header that a raw PUT would miss.
   return NextResponse.json({
-    uploadUrl: data.signedUrl,
+    path: filePath,
+    token: data.token,
     publicUrl: urlData.publicUrl,
   });
 }

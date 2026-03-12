@@ -313,15 +313,15 @@ export default function NewModulePage() {
 
     const uploadPct = Math.round(progress.uploadProgress * 0.3);
     const stagePercent: Partial<Record<UiStage, number>> = {
-      uploading: uploadPct,
+      uploading: tab === "text" ? 30 : uploadPct,
       transcribing: 40,
       analyzing: 70,
       finalizing: 90,
     };
     const stageLabel: Partial<Record<UiStage, string>> = {
-      uploading: "Extracting audio & uploading video...",
+      uploading: tab === "video" ? "Extracting audio & uploading video..." : "Submitting your notes...",
       transcribing: "Transcribing audio with Whisper...",
-      analyzing: tab === "video" ? "Generating SOP with Claude..." : "Generating SOP...",
+      analyzing: "Generating SOP with Claude...",
       finalizing: "Wrapping up...",
     };
     const percent = stagePercent[progress.stage] ?? 0;

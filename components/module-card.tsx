@@ -76,8 +76,7 @@ export function ModuleCard({ module }: ModuleCardProps) {
           <div className="mt-auto flex flex-col gap-2">
             {/* Completion progress */}
             {module.status === "published" &&
-              module.assignment_count &&
-              module.assignment_count > 0 && (
+              (module.assignment_count ?? 0) > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-text-secondary">

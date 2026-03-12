@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Mail } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ export default function SignupPage() {
   const [businessName, setBusinessName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkEmail, setCheckEmail] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,19 +47,59 @@ export default function SignupPage() {
         .eq("id", data.user.id);
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    // If session is already set, email confirmation is disabled — go straight to dashboard.
+    // If session is null, confirmation is required — show the check-inbox screen.
+    if (data.session) {
+      router.push("/dashboard");
+      router.refresh();
+    } else {
+      setCheckEmail(true);
+      setLoading(false);
+    }
   }
 
+  // ── Check-your-inbox screen ───────────────────────────────────────────────
+  if (checkEmail) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
+        <div className="w-full max-w-sm">
+          <div className="flex justify-center mb-8">
+            <Logo />
+          </div>
+          <div className="bg-surface border border-[var(--color-border)] rounded-2xl p-8 flex flex-col items-center text-center gap-5">
+            <div className="w-14 h-14 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center">
+              <Mail className="h-7 w-7 text-accent" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-text-primary">
+                Check your inbox
+              </h1>
+              <p className="text-sm text-text-secondary mt-2">
+                We sent a confirmation link to{" "}
+                <span className="text-accent font-medium">{email}</span>.
+                Click it to activate your account.
+              </p>
+            </div>
+            <p className="text-xs text-text-secondary">
+              Already confirmed?{" "}
+              <Link href="/login" className="text-accent hover:text-accent-hover transition-colors">
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Signup form ───────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="flex justify-center mb-8">
           <Logo />
         </div>
 
-        {/* Card */}
         <div className="bg-surface border border-[var(--color-border)] rounded-2xl p-8">
           <div className="mb-6">
             <h1 className="text-xl font-semibold text-text-primary">

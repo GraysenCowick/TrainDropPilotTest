@@ -10,14 +10,6 @@ interface SegmentTimestamp {
   end: number;
 }
 
-function formatSRTTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const ms = Math.round((seconds % 1) * 1000);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
-}
-
 function formatVTTTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -26,35 +18,45 @@ function formatVTTTime(seconds: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
 }
 
-export function generateSRT(words: WordTimestamp[]): string {
-  if (words.length === 0) return "";
+/**
+ * Build VTT cues from Whisper segments.
+ *
+ * Segments are sentence-level — Whisper's segment timestamps are reliable and
+ * well-calibrated. Word-level timestamps drift and cause sync issues, so we
+ * use segments as the primary source.
+ *
+ * Long segments (> 10 words) are split into two equal cues so no single caption
+ * holds too much text. The split point is timed proportionally.
+ */
+function cuesFromSegments(segments: SegmentTimestamp[]): string {
+  const lines: string[] = ["WEBVTT", ""];
+  let idx = 1;
 
-  const lines: string[] = [];
-  let index = 1;
-  let currentWords: WordTimestamp[] = [];
+  for (const seg of segments) {
+    const text = seg.text.trim();
+    if (!text) continue;
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    currentWords.push(word);
+    const wordList = text.split(/\s+/);
 
-    // Break into a caption every 5 words, on sentence-ending punctuation, or at the last word
-    const shouldBreak =
-      currentWords.length >= 5 ||
-      /[.!?]$/.test(word.word) ||
-      i === words.length - 1;
-
-    if (shouldBreak && currentWords.length > 0) {
-      const startTime = currentWords[0].start;
-      const endTime = currentWords[currentWords.length - 1].end;
-      const text = currentWords.map((w) => w.word).join(" ").trim();
-
-      lines.push(`${index}`);
-      lines.push(`${formatSRTTime(startTime)} --> ${formatSRTTime(endTime)}`);
+    if (wordList.length <= 10) {
+      lines.push(`${idx++}`);
+      lines.push(`${formatVTTTime(seg.start)} --> ${formatVTTTime(seg.end)}`);
       lines.push(text);
       lines.push("");
+    } else {
+      // Split long segment into two halves, dividing time proportionally
+      const mid = Math.floor(wordList.length / 2);
+      const midTime = seg.start + (seg.end - seg.start) * (mid / wordList.length);
 
-      index++;
-      currentWords = [];
+      lines.push(`${idx++}`);
+      lines.push(`${formatVTTTime(seg.start)} --> ${formatVTTTime(midTime)}`);
+      lines.push(wordList.slice(0, mid).join(" "));
+      lines.push("");
+
+      lines.push(`${idx++}`);
+      lines.push(`${formatVTTTime(midTime)} --> ${formatVTTTime(seg.end)}`);
+      lines.push(wordList.slice(mid).join(" "));
+      lines.push("");
     }
   }
 
@@ -62,46 +64,43 @@ export function generateSRT(words: WordTimestamp[]): string {
 }
 
 /**
- * Generate VTT from segment-level timestamps (one caption per segment/sentence).
- * Used as fallback when word-level timestamps are unavailable or incomplete.
+ * Build VTT cues from word-level timestamps (fallback only).
+ * Groups words into ~6-word chunks. Less accurate than segments.
  */
-function generateVTTFromSegments(segments: SegmentTimestamp[]): string {
+function cuesFromWords(words: WordTimestamp[]): string {
+  if (words.length === 0) return "WEBVTT\n\n";
+
   const lines: string[] = ["WEBVTT", ""];
+  let idx = 1;
+  let chunk: WordTimestamp[] = [];
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const text = seg.text.trim();
-    if (!text) continue;
-
-    lines.push(`${i + 1}`);
-    lines.push(`${formatVTTTime(seg.start)} --> ${formatVTTTime(seg.end)}`);
-    lines.push(text);
-    lines.push("");
+  for (let i = 0; i < words.length; i++) {
+    chunk.push(words[i]);
+    if (chunk.length >= 6 || /[.!?]$/.test(words[i].word) || i === words.length - 1) {
+      lines.push(`${idx++}`);
+      lines.push(`${formatVTTTime(chunk[0].start)} --> ${formatVTTTime(chunk[chunk.length - 1].end)}`);
+      lines.push(chunk.map((w) => w.word).join(" ").trim());
+      lines.push("");
+      chunk = [];
+    }
   }
 
   return lines.join("\n");
 }
 
 /**
- * Generate a WebVTT subtitle file.
+ * Generate a WebVTT caption file from Whisper output.
  *
- * Prefers word-level timestamps (fine-grained, 5 words per cue) when Whisper
- * returns them. Falls back to segment-level timestamps (one cue per sentence)
- * when the words array is empty — Whisper occasionally omits word timestamps
- * for longer or unclear audio, but always returns segments.
+ * Segment timestamps are used as primary — they are sentence-level and
+ * accurately reflect when each sentence is spoken. Word timestamps are
+ * kept as a fallback for edge cases where segments are missing.
  */
 export function generateVTT(
   words: WordTimestamp[],
   segments?: SegmentTimestamp[]
 ): string {
-  if (words.length > 0) {
-    const srt = generateSRT(words);
-    return "WEBVTT\n\n" + srt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
-  }
-
   if (segments && segments.length > 0) {
-    return generateVTTFromSegments(segments);
+    return cuesFromSegments(segments);
   }
-
-  return "WEBVTT\n\n";
+  return cuesFromWords(words);
 }

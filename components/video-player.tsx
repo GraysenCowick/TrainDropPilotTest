@@ -55,14 +55,19 @@ export function VideoPlayer({
   // Sync caption visibility via the TextTrack API
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !vttBlobUrl) return;
+    if (!video) return;
     const apply = () => {
       const track = video.textTracks[0];
       if (track) track.mode = captionsOn ? "showing" : "hidden";
     };
     apply();
+    // Catch the track being added to the DOM after the blob URL is set
+    video.textTracks.addEventListener("addtrack", apply);
     video.addEventListener("loadedmetadata", apply);
-    return () => video.removeEventListener("loadedmetadata", apply);
+    return () => {
+      video.textTracks.removeEventListener("addtrack", apply);
+      video.removeEventListener("loadedmetadata", apply);
+    };
   }, [captionsOn, vttBlobUrl]);
 
   // Sync mute state to the video element
@@ -147,8 +152,8 @@ export function VideoPlayer({
             });
             setLoadError(true);
           }}
-          onClick={togglePlay}
           playsInline
+          disablePictureInPicture
         >
           {hasCaption && vttBlobUrl && (
             <track
@@ -159,6 +164,9 @@ export function VideoPlayer({
             />
           )}
         </video>
+
+        {/* Transparent overlay — blocks browser-native video hover controls (Safari/Chrome PiP, etc.) */}
+        <div className="absolute inset-0" onClick={togglePlay} />
 
         {/* Controls overlay */}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-4 opacity-0 group-hover:opacity-100 transition-opacity">

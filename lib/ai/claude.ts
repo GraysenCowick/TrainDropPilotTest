@@ -27,23 +27,38 @@ export async function generateSOP(rawNotes: string): Promise<SOPResult> {
     messages: [
       {
         role: "user",
-        content: `You are a professional SOP (Standard Operating Procedure) writer for small businesses.
+        content: `You are a professional training document writer for small businesses. Turn these raw notes into a polished, comprehensive Standard Operating Procedure (SOP) that a new employee can follow without needing additional guidance.
 
-Convert these raw notes into a professional, structured SOP. The SOP should be clear, step-by-step, and easy for any employee to follow.
+The SOP must look and read like a real company training document — thorough, well-organized, and professional.
 
-Return your response as JSON with this exact structure:
+WRITING RULES:
+- Write in clear second-person imperative: "Open the register...", "Check that...", "Place the..."
+- Expand brief notes into complete, actionable instructions with enough detail to actually follow
+- Organize steps logically — group related actions under section headings
+- Do NOT use placeholder text like [Date], [Manager Name], [Your Name], or bracketed variables
+
+THE sop_content MUST FOLLOW THIS STRUCTURE:
+
+## Overview
+What this procedure covers and why it matters.
+
+## Materials & Equipment
+Everything needed before starting (if applicable).
+
+## Step-by-Step Instructions
+Numbered steps under ### sub-headings for each phase. Break compound steps into individual numbered steps.
+
+## Key Reminders
+Most important things to remember, warnings, and common mistakes to avoid.
+
+## Summary
+Brief paragraph on the expected outcome when the procedure is completed correctly.
+
+Return ONLY valid JSON with no text before or after it:
 {
-  "title": "Short, descriptive title for this SOP (max 60 chars)",
-  "sop_content": "Full markdown-formatted SOP content here"
+  "title": "Clear, specific title (max 60 chars)",
+  "sop_content": "Complete professional SOP in markdown following the structure above"
 }
-
-The SOP should include:
-- A brief overview/purpose statement
-- Step-by-step numbered instructions
-- Any important warnings or tips (use ⚠️ for warnings, 💡 for tips)
-- Clear, actionable language
-
-Do NOT include any unfilled template placeholders like [Date], [Manager Name], [Your Name], or any bracketed variables. Only include real content.
 
 Raw notes:
 ${rawNotes}`,
@@ -69,25 +84,45 @@ export async function analyzeTranscript(
     messages: [
       {
         role: "user",
-        content: `You are converting a training video transcript into a Standard Operating Procedure (SOP) document.
+        content: `You are a professional training document writer. A business owner has recorded a training video and you must turn the transcript into a polished, comprehensive Standard Operating Procedure (SOP) that a new employee can use to learn and perform this task correctly.
 
-The transcript below is a direct recording of someone explaining or demonstrating a real process. Your job is to turn their words into a clean, structured SOP that employees can follow.
+Your output must look and read like a real company training document — thorough, organized, and professional. A new employee should be able to read the SOP alone and know exactly what to do.
 
-CRITICAL RULES — read carefully before writing:
-1. The SOP must be based ONLY on what the speaker actually said in the transcript. Do not add steps, advice, or content that isn't in the transcript.
-2. Preserve the speaker's exact terminology, names, product names, and specific details (temperatures, times, quantities, tool names, etc.).
-3. If the speaker lists steps in a specific order, keep that exact order.
-4. Do not pad with generic business advice. Every sentence in the SOP should trace back to something said in the video.
-5. Do NOT use placeholder text like [Date], [Name], [Your Company], or any bracketed variables.
-6. Write in second-person imperative ("Place the tray...", "Turn on the machine...", not "The employee should...").
+WRITING RULES:
+- Use the transcript as your primary source. Every procedure and step must come from or be directly inferred from what was said in the video.
+- Preserve all specific details exactly as mentioned: product names, quantities, temperatures, equipment names, timing, settings, order of steps.
+- Write in clear second-person imperative voice: "Pour the solution into...", "Turn the dial to...", "Check that..."
+- Do NOT use placeholder text like [Date], [Manager Name], or any bracketed variables — only real content.
+- Expand the speaker's words into complete, professional instructions. If they say "make sure it's clean," write a clear instruction for how to verify cleanliness.
+- Organize content logically even if the speaker jumped around.
 
-Return ONLY valid JSON with this structure (no text before or after the JSON):
+THE sop_content MUST FOLLOW THIS STRUCTURE (use these exact ## headings where applicable):
+
+## Overview
+One to two sentences describing what this procedure covers and why it matters.
+
+## Who This Applies To
+Who should follow this procedure (e.g., all front-of-house staff, new kitchen employees, etc. — infer from context).
+
+## Materials & Equipment
+Bulleted list of everything needed (tools, ingredients, supplies, equipment mentioned in the video).
+
+## Step-by-Step Instructions
+Numbered steps organized under ### sub-headings for each phase or section of the process. Be thorough — break compound steps into individual numbered steps. Include every detail mentioned.
+
+## Key Reminders
+Bulleted list of the most important things to remember, warnings, or common mistakes to avoid based on what the speaker emphasized.
+
+## Summary
+One short paragraph summarizing the procedure and the expected outcome when done correctly.
+
+Return ONLY valid JSON with no text before or after it:
 {
-  "title": "Specific title describing exactly what this training covers (max 60 chars)",
-  "cleaned_transcript": "The full transcript cleaned up — fix run-on sentences, add punctuation, break into paragraphs. Keep all original content and wording.",
-  "sop_content": "Detailed markdown SOP. Use ## for section headings, numbered lists for sequential steps, bullet points for non-sequential items. Include every specific detail from the video: exact steps, settings, quantities, warnings, tips. This should be comprehensive enough that someone can follow it without watching the video.",
+  "title": "Clear, specific title for this training procedure (max 60 chars)",
+  "cleaned_transcript": "Full transcript with proper punctuation, capitalization, and paragraph breaks. Keep all original words and content — just clean up the formatting.",
+  "sop_content": "The complete professional SOP document following the structure above, written in markdown.",
   "chapters": [
-    {"title": "Section name", "start_time": 0, "summary": "One sentence describing what is covered in this section"}
+    {"title": "Chapter name", "start_time": 0, "summary": "One sentence on what this section covers"}
   ]
 }
 

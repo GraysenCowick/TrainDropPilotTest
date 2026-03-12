@@ -11,11 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { FileUpload } from "@/components/file-upload";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
-import type { VideoProcessingStep } from "@/lib/supabase/types";
 
 type Tab = "text" | "video";
 
-// Visible pipeline stages shown in the progress UI
 type UiStage =
   | "uploading"
   | "transcribing"
@@ -27,29 +25,12 @@ interface ProgressState {
   active: boolean;
   stage: UiStage;
   uploadProgress: number;
-  moduleId: string | null;
   errorMessage: string | null;
 }
 
-
-// Map processing_step DB value → UI stage
-function dbStepToUiStage(step: VideoProcessingStep): UiStage {
-  if (step === "transcribing") return "transcribing";
-  if (step === "analyzing" || step === "voiceover" || step === "processing_video") return "analyzing";
-  if (step === "finalizing") return "finalizing";
-  return "transcribing"; // null = just queued, show earliest active stage
-}
-
-const STAGE_ORDER: UiStage[] = ["uploading", "transcribing", "analyzing", "finalizing", "error"];
-
-function stageIndex(s: UiStage) {
-  return STAGE_ORDER.indexOf(s);
-}
-
-// ── Audio extraction utilities (runs entirely in the browser) ─────────────────
-// Extracts the audio track from a video file and re-encodes it as 16 kHz mono
-// WAV. This produces a tiny file (~1 MB/min) so Whisper's 25 MB limit is never
-// hit regardless of how large the original video is.
+// ── Audio extraction (runs entirely in the browser) ───────────────────────────
+// Extracts the audio track and re-encodes as 16 kHz mono WAV.
+// This keeps the file tiny (~1 MB/min) so Whisper's 25 MB limit is never hit.
 
 function writeStr(view: DataView, offset: number, str: string) {
   for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
@@ -58,7 +39,7 @@ function writeStr(view: DataView, offset: number, str: string) {
 function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
   const numSamples = audioBuffer.length;
   const sampleRate = audioBuffer.sampleRate;
-  const dataLen = numSamples * 2; // 16-bit mono
+  const dataLen = numSamples * 2;
   const buf = new ArrayBuffer(44 + dataLen);
   const view = new DataView(buf);
   writeStr(view, 0, "RIFF");
@@ -66,8 +47,8 @@ function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
   writeStr(view, 8, "WAVE");
   writeStr(view, 12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
@@ -85,8 +66,7 @@ function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
 }
 
 async function extractAudioFromVideo(file: File): Promise<File> {
-  // ── Fast path (Chrome): decodeAudioData handles MP4/MOV containers ───────
-  // Safari refuses to decode video containers this way, so we fall through.
+  // Fast path (Chrome/Firefox): decodeAudioData handles MP4/MOV containers
   try {
     const arrayBuffer = await file.arrayBuffer();
     const tmpCtx = new AudioContext();
@@ -102,12 +82,13 @@ async function extractAudioFromVideo(file: File): Promise<File> {
     const resampled = await offCtx.startRendering();
     return new File([encodeWav(resampled)], "audio.wav", { type: "audio/wav" });
   } catch {
-    // Fall through to video-element fallback
+    // fall through to video-element fallback
   }
 
-  // ── Fallback (Safari + all browsers): route video through AudioContext ────
-  // Uses the browser's native video decoder — works for any format the browser
-  // can play. Runs in real-time (a 30s video takes ~30s to extract).
+  // Fallback (Safari + any format the browser can play).
+  // Records audio in real-time while the hidden video plays.
+  // Video element is muted so audio routes through AudioContext only,
+  // and a gain=0 node silences the output while keeping the graph active.
   return new Promise<File>((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const video = document.createElement("video");
@@ -130,15 +111,17 @@ async function extractAudioFromVideo(file: File): Promise<File> {
       const audioCtx = new AudioContext({ sampleRate: 16_000 });
       const source = audioCtx.createMediaElementSource(video);
       const dest = audioCtx.createMediaStreamDestination();
-      source.connect(dest);
-      // Connect to a silent gain node to keep the audio graph running without
-      // routing audio to the speakers.
-      const silence = audioCtx.createGain();
-      silence.gain.value = 0;
-      source.connect(silence);
-      silence.connect(audioCtx.destination);
 
-      // Pick best supported audio format (Safari uses mp4, Chrome uses webm)
+      // Route audio to the recorder
+      source.connect(dest);
+
+      // Route through a gain=0 node to destination: keeps the AudioContext
+      // running without producing audible output
+      const silencer = audioCtx.createGain();
+      silencer.gain.value = 0;
+      source.connect(silencer);
+      silencer.connect(audioCtx.destination);
+
       let mimeType = "";
       for (const m of ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"]) {
         if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; }
@@ -160,9 +143,9 @@ async function extractAudioFromVideo(file: File): Promise<File> {
 
       recorder.start();
       video.muted = true;
-      video.play().then(() => {
-        video.addEventListener("ended", () => recorder.stop());
-      }).catch((err) => { cleanup(); reject(err); });
+      video.play()
+        .then(() => { video.addEventListener("ended", () => recorder.stop()); })
+        .catch((err) => { cleanup(); reject(err); });
     });
   });
 }
@@ -179,58 +162,35 @@ export default function NewModulePage() {
     active: false,
     stage: "uploading",
     uploadProgress: 0,
-    moduleId: null,
     errorMessage: null,
   });
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Stage animation timer (advances label while server processes)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-
-  // Clean up polling on unmount
   useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  function stopPolling() {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
+  function stopTimer() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }
 
   function setError(message: string) {
-    stopPolling();
+    stopTimer();
     setProgress((p) => ({ ...p, stage: "error", errorMessage: message }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (tab === "text" && !rawNotes.trim()) { toast("Please add some notes first", "error"); return; }
+    if (tab === "video" && !videoFile) { toast("Please select a video first", "error"); return; }
 
-    if (tab === "text" && !rawNotes.trim()) {
-      toast("Please add some notes first", "error");
-      return;
-    }
-    if (tab === "video" && !videoFile) {
-      toast("Please select a video first", "error");
-      return;
-    }
-
-    setProgress({
-      active: true,
-      stage: tab === "video" ? "uploading" : "analyzing",
-      uploadProgress: 0,
-      moduleId: null,
-      errorMessage: null,
-    });
+    setProgress({ active: true, stage: "uploading", uploadProgress: 0, errorMessage: null });
 
     try {
-      if (tab === "video") {
-        await runVideoFlow();
-      } else {
-        await runTextFlow();
-      }
+      if (tab === "video") await runVideoFlow();
+      else await runTextFlow();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
@@ -246,38 +206,28 @@ export default function NewModulePage() {
         raw_notes: rawNotes,
       }),
     });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Failed to create module");
-    }
-
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Failed to create module"); }
     const data = await res.json();
-    setProgress((p) => ({ ...p, stage: "finalizing" }));
-    await new Promise((resolve) => setTimeout(resolve, 600));
     router.push(`/dashboard/modules/${data.id}`);
   }
 
   async function runVideoFlow() {
     if (!videoFile) throw new Error("Missing file");
-
     if (videoFile.size > 500 * 1024 * 1024) {
       throw new Error(`File too large (${(videoFile.size / 1024 / 1024).toFixed(0)} MB). Max 500 MB.`);
     }
 
-    // ── Step 1: Extract audio from the video in the browser ──────────────────
-    // Produces a tiny WAV file (~1 MB/min at 16 kHz mono).
-    // Whisper receives this small file instead of the full video — no 25 MB limit hit.
-    setProgress((p) => ({ ...p, uploadProgress: 15 })); // show immediate feedback
+    // ── Step 1: Extract audio ─────────────────────────────────────────────
+    setProgress((p) => ({ ...p, uploadProgress: 15 }));
     let audioFile: File;
     try {
       audioFile = await extractAudioFromVideo(videoFile);
     } catch {
       throw new Error("Could not read audio from this video. Please try a different file format.");
     }
-    setProgress((p) => ({ ...p, uploadProgress: 55 })); // extraction done
+    setProgress((p) => ({ ...p, uploadProgress: 55 }));
 
-    // ── Step 2: Get presigned upload URLs for video + audio ───────────────────
+    // ── Step 2: Get presigned upload URLs ─────────────────────────────────
     const [videoUrlRes, audioUrlRes] = await Promise.all([
       fetch("/api/upload-video", {
         method: "POST",
@@ -287,93 +237,74 @@ export default function NewModulePage() {
       fetch("/api/upload-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: "audio.wav" }),
+        body: JSON.stringify({ filename: audioFile.name }),
       }),
     ]);
-
-    if (!videoUrlRes.ok || !audioUrlRes.ok) {
-      throw new Error("Failed to prepare upload");
-    }
+    if (!videoUrlRes.ok || !audioUrlRes.ok) throw new Error("Failed to prepare upload");
 
     const { path: videoPath, token: videoToken, publicUrl: videoPublicUrl } = await videoUrlRes.json();
     const { path: audioPath, token: audioToken, publicUrl: audioPublicUrl } = await audioUrlRes.json();
 
-    // ── Step 3: Upload video + audio directly to Supabase ────────────────────
+    // ── Step 3: Upload both files to Supabase ─────────────────────────────
     const supabase = createClient();
     const [videoUpload, audioUpload] = await Promise.all([
       supabase.storage.from("processed").uploadToSignedUrl(videoPath, videoToken, videoFile, {
         contentType: videoFile.type || "video/mp4",
       }),
       supabase.storage.from("processed").uploadToSignedUrl(audioPath, audioToken, audioFile, {
-        contentType: "audio/wav",
+        contentType: audioFile.type || "audio/wav",
       }),
     ]);
-
     if (videoUpload.error) throw new Error(`Video upload failed: ${videoUpload.error.message}`);
     if (audioUpload.error) throw new Error(`Audio upload failed: ${audioUpload.error.message}`);
 
     setProgress((p) => ({ ...p, uploadProgress: 100 }));
 
-    // ── Step 4: Create module row and trigger pipeline ────────────────────────
-    const res = await fetch("/api/modules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        input_type: "video",
-        title: title.trim() || "Untitled Training Video",
-        original_video_url: videoPublicUrl,
-        audio_url: audioPublicUrl,
-      }),
-    });
+    // ── Step 4: Animate stages while server runs Whisper + Claude ─────────
+    // The POST below is synchronous on the server (~30–90s).
+    // Advance the stage label every 25s so the user sees progress.
+    setProgress((p) => ({ ...p, stage: "transcribing" }));
+    const stageSequence: UiStage[] = ["transcribing", "analyzing", "finalizing"];
+    let seq = 0;
+    timerRef.current = setInterval(() => {
+      seq = Math.min(seq + 1, stageSequence.length - 1);
+      setProgress((p) => ({ ...p, stage: stageSequence[seq] }));
+    }, 25_000);
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to create module");
+    // ── Step 5: POST — server runs full pipeline, blocks until done ───────
+    let moduleId: string;
+    try {
+      const res = await fetch("/api/modules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input_type: "video",
+          title: title.trim() || "Untitled Training Video",
+          original_video_url: videoPublicUrl,
+          audio_url: audioPublicUrl,
+        }),
+      });
+
+      stopTimer();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to create module");
+      }
+
+      const data = await res.json();
+      moduleId = data.id;
+    } catch (err) {
+      stopTimer();
+      throw err;
     }
 
-    const data = await res.json();
-    const moduleId: string = data.id;
-
-    setProgress((p) => ({ ...p, stage: "transcribing", moduleId }));
-
-    // ── Step 3: Poll until done ──────────────────────────────────────────────
-    pollRef.current = setInterval(async () => {
-      try {
-        const pollRes = await fetch(`/api/modules/${moduleId}`);
-        if (!pollRes.ok) return;
-
-        const mod = await pollRes.json();
-        const status: string = mod.status;
-        const processingStep: VideoProcessingStep = mod.processing_step ?? null;
-
-        if (status === "error") {
-          setError("Video processing failed. Please try again.");
-          return;
-        }
-
-        if (status === "ready" || status === "published") {
-          stopPolling();
-          setProgress((p) => ({ ...p, stage: "finalizing" }));
-          await new Promise((resolve) => setTimeout(resolve, 600));
-          router.push(`/dashboard/modules/${moduleId}`);
-          return;
-        }
-
-        // Map DB step to UI stage and advance if forward progress
-        const newStage = dbStepToUiStage(processingStep);
-        setProgress((p) => {
-          if (stageIndex(newStage) > stageIndex(p.stage)) {
-            return { ...p, stage: newStage };
-          }
-          return p;
-        });
-      } catch {
-        // Ignore transient poll errors
-      }
-    }, 2500);
+    setProgress((p) => ({ ...p, stage: "finalizing" }));
+    await new Promise((r) => setTimeout(r, 500));
+    router.push(`/dashboard/modules/${moduleId}`);
   }
 
-  // ── Progress overlay ───────────────────────────────────────────────────────
+  // ── Progress overlay ──────────────────────────────────────────────────────
   if (progress.active) {
     const isError = progress.stage === "error";
 
@@ -386,9 +317,9 @@ export default function NewModulePage() {
     };
     const stageLabel: Partial<Record<UiStage, string>> = {
       uploading: "Extracting audio & uploading video...",
-      transcribing: "Transcribing audio...",
-      analyzing: tab === "video" ? "Generating training module..." : "Generating SOP...",
-      finalizing: "Finalizing...",
+      transcribing: "Transcribing audio with Whisper...",
+      analyzing: tab === "video" ? "Generating SOP with Claude..." : "Generating SOP...",
+      finalizing: "Wrapping up...",
     };
     const percent = stagePercent[progress.stage] ?? 0;
     const label = stageLabel[progress.stage] ?? "Processing...";
@@ -401,10 +332,10 @@ export default function NewModulePage() {
           </h1>
           <p className="text-sm text-text-secondary mt-1">
             {isError
-              ? "Something went wrong during processing."
+              ? "Something went wrong."
               : tab === "video"
-              ? "This takes 2–5 minutes. You can safely navigate away and come back."
-              : "Claude is writing your SOP. Just a moment…"}
+              ? "This takes 1–3 minutes. Please keep this tab open."
+              : "Claude is writing your SOP — just a moment…"}
           </p>
         </div>
 
@@ -420,13 +351,7 @@ export default function NewModulePage() {
             <Button
               variant="secondary"
               onClick={() =>
-                setProgress({
-                  active: false,
-                  stage: "uploading",
-                  uploadProgress: 0,
-                  moduleId: null,
-                  errorMessage: null,
-                })
+                setProgress({ active: false, stage: "uploading", uploadProgress: 0, errorMessage: null })
               }
             >
               Try again
@@ -435,15 +360,18 @@ export default function NewModulePage() {
         ) : (
           <div className="bg-surface border border-[var(--color-border)] rounded-xl p-8 flex flex-col items-center gap-6">
             {/* Spinning wheel */}
-            <div className="relative w-14 h-14">
+            <div className="relative w-16 h-16">
               <div className="absolute inset-0 rounded-full border-2 border-accent/20" />
               <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" />
-              <div className="absolute inset-[5px] rounded-full bg-accent/10 flex items-center justify-center">
-                <Loader2 className="h-4 w-4 text-accent animate-spin" style={{ animationDirection: "reverse" }} />
+              <div className="absolute inset-[6px] rounded-full bg-accent/10 flex items-center justify-center">
+                <Loader2
+                  className="h-5 w-5 text-accent animate-spin"
+                  style={{ animationDirection: "reverse", animationDuration: "1.5s" }}
+                />
               </div>
             </div>
 
-            {/* Progress bar */}
+            {/* Progress bar + label */}
             <div className="w-full">
               <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-3">
                 <div
@@ -459,7 +387,7 @@ export default function NewModulePage() {
     );
   }
 
-  // ── Form ───────────────────────────────────────────────────────────────────
+  // ── Form ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto">
       <Link
@@ -483,9 +411,7 @@ export default function NewModulePage() {
           onClick={() => setTab("video")}
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all",
-            tab === "video"
-              ? "bg-accent text-background"
-              : "text-text-secondary hover:text-text-primary"
+            tab === "video" ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"
           )}
         >
           <Video className="h-4 w-4" />
@@ -495,9 +421,7 @@ export default function NewModulePage() {
           onClick={() => setTab("text")}
           className={cn(
             "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all",
-            tab === "text"
-              ? "bg-accent text-background"
-              : "text-text-secondary hover:text-text-primary"
+            tab === "text" ? "bg-accent text-background" : "text-text-secondary hover:text-text-primary"
           )}
         >
           <FileText className="h-4 w-4" />
@@ -510,9 +434,7 @@ export default function NewModulePage() {
           label="Title (optional)"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder={
-            tab === "text" ? "e.g. Opening Checklist" : "e.g. How to Prep Workstation"
-          }
+          placeholder={tab === "text" ? "e.g. Opening Checklist" : "e.g. How to Prep Workstation"}
         />
 
         {tab === "text" ? (
@@ -528,6 +450,9 @@ export default function NewModulePage() {
           <div>
             <p className="text-sm font-medium text-text-primary mb-1.5">Video File</p>
             <FileUpload onFileChange={setVideoFile} />
+            <p className="text-xs text-text-secondary mt-2">
+              MP4, MOV, or WebM · Max 500 MB · Keep this tab open while processing
+            </p>
           </div>
         )}
 
@@ -536,20 +461,11 @@ export default function NewModulePage() {
           variant="primary"
           size="lg"
           className="w-full"
-          disabled={
-            (tab === "text" && !rawNotes.trim()) ||
-            (tab === "video" && !videoFile)
-          }
+          disabled={(tab === "text" && !rawNotes.trim()) || (tab === "video" && !videoFile)}
         >
           {tab === "text" ? "Generate SOP" : "Process Video"}
         </Button>
       </form>
-
-      <p className="text-xs text-text-secondary text-center mt-4">
-        {tab === "text"
-          ? "Your structured SOP will be ready in 15–30 seconds."
-          : "Video processing takes 2–5 minutes. You can leave this page."}
-      </p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
 import { runVideoPipeline } from "@/lib/video/pipeline";
@@ -21,13 +21,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
   const { input_type, title, raw_notes, original_video_url, audio_url } = body;
@@ -35,13 +30,11 @@ export async function POST(request: NextRequest) {
   if (!input_type || !["text", "video"].includes(input_type)) {
     return NextResponse.json({ error: "Invalid input_type" }, { status: 400 });
   }
-
   if (input_type === "text" && !raw_notes) {
     return NextResponse.json({ error: "raw_notes required for text modules" }, { status: 400 });
   }
-
   if (input_type === "video" && (!original_video_url || !audio_url)) {
-    return NextResponse.json({ error: "original_video_url and audio_url required for video modules" }, { status: 400 });
+    return NextResponse.json({ error: "original_video_url and audio_url required" }, { status: 400 });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,7 +44,7 @@ export async function POST(request: NextRequest) {
     .from("modules")
     .insert({
       user_id: user.id,
-      title: title || (input_type === "text" ? "Processing..." : "Video Module"),
+      title: title || (input_type === "text" ? "Processing..." : "Processing..."),
       status: "processing",
       input_type,
       raw_notes: raw_notes || null,
@@ -60,35 +53,36 @@ export async function POST(request: NextRequest) {
     .select()
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (input_type === "text") {
-    // Text: process synchronously — Claude is fast enough (~10–15s)
+    // Text: run Claude synchronously (~10–20s)
     try {
       const result = await generateSOP(raw_notes);
-      await admin
-        .from("modules")
-        .update({
-          title: result.title,
-          sop_content: result.sop_content,
-          status: "ready",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", module.id);
+      await admin.from("modules").update({
+        title: result.title,
+        sop_content: result.sop_content,
+        status: "ready",
+        updated_at: new Date().toISOString(),
+      }).eq("id", module.id);
     } catch (err) {
       console.error("SOP generation failed:", err);
-      await admin
-        .from("modules")
-        .update({ status: "error", updated_at: new Date().toISOString() })
-        .eq("id", module.id);
+      await admin.from("modules").update({
+        status: "error",
+        updated_at: new Date().toISOString(),
+      }).eq("id", module.id);
     }
   } else {
-    // Video: kick off pipeline after response is sent.
-    // The browser extracted audio client-side (WAV, ~1 MB/min) so Whisper
-    // receives a tiny file and transcribes fast. Total pipeline time: ~30s.
-    after(() => runVideoPipeline(module.id, original_video_url, audio_url));
+    // Video: run the full pipeline synchronously (Whisper + Claude = ~30–90s).
+    // maxDuration = 300s so there is plenty of headroom.
+    // This replaces the old after() fire-and-forget which was unreliable on Vercel.
+    try {
+      await runVideoPipeline(module.id, original_video_url, audio_url);
+    } catch (err) {
+      console.error("Video pipeline failed:", err);
+      // runVideoPipeline already marks the module as "error" in the DB.
+      // Return the ID anyway so the client can navigate to the error state.
+    }
   }
 
   return NextResponse.json({ id: module.id }, { status: 201 });

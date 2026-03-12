@@ -5,7 +5,7 @@ import { generateVTT } from "@/lib/video/subtitles";
 import type { Module } from "@/lib/supabase/types";
 import type { WhisperTranscript } from "@/lib/ai/whisper";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 interface Params {
   params: Promise<{ id: string }>;

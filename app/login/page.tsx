@@ -75,9 +75,18 @@ export default function LoginPage() {
             />
 
             {error && (
-              <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                {error}
-              </p>
+              error.toLowerCase().includes("email not confirmed") ? (
+                <div className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3 flex flex-col gap-1">
+                  <p className="text-sm font-medium text-text-primary">Check your inbox</p>
+                  <p className="text-sm text-text-secondary">
+                    We sent a confirmation link to <span className="text-accent">{email}</span>. Click it to activate your account, then sign in.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                  {error}
+                </p>
+              )
             )}
 
             <Button

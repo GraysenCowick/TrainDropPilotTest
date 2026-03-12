@@ -65,3 +65,11 @@ a {
   background-color: rgba(0, 207, 255, 0.2);
   color: var(--color-text-primary);
 }
+
+/* Suppress browser-native video overlay so only the custom player controls show */
+video::-webkit-media-controls {
+  display: none !important;
+}
+video::-webkit-media-controls-enclosure {
+  display: none !important;
+}

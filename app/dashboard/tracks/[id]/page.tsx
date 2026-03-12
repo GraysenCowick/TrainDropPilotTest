@@ -268,13 +268,13 @@ export default function TrackDetailPage() {
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
           {isPublished ? (
             <>
-              <Button variant="ghost" size="sm" onClick={() => setShowStatus((v) => !v)}>
-                <BarChart3 className="h-4 w-4" />
-                <span className="hidden sm:inline">Status</span>
-              </Button>
               <Button variant="primary" size="sm" onClick={() => setSendModalOpen(true)}>
                 <Send className="h-4 w-4" />
                 <span className="hidden sm:inline">Send to Team</span>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowStatus((v) => !v)}>
+                <BarChart3 className="h-4 w-4" />
+                <span className="hidden sm:inline">Status</span>
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setUnpublishOpen(true)}>
                 <EyeOff className="h-4 w-4" />

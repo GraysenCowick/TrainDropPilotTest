@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();

@@ -276,7 +276,7 @@ export default function ModuleDetailPage() {
 
       {/* Content */}
       {module.status === "processing" ? (
-        <ProcessingStatus moduleId={id} inputType={module.input_type} />
+        <ProcessingStatus moduleId={id} inputType={module.input_type} onComplete={fetchModule} />
       ) : (
         <div className="flex flex-col gap-6">
           {/* Error banner */}

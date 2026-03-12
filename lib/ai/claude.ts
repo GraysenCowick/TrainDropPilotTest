@@ -43,6 +43,8 @@ The SOP should include:
 - Any important warnings or tips (use ⚠️ for warnings, 💡 for tips)
 - Clear, actionable language
 
+Do NOT include any unfilled template placeholders like [Date], [Manager Name], [Your Name], or any bracketed variables. Only include real content.
+
 Raw notes:
 ${rawNotes}`,
       },
@@ -78,6 +80,8 @@ Analyze this video transcript and return a JSON response with this exact structu
     {"title": "Chapter title", "start_time": 0, "summary": "What this section covers"}
   ]
 }
+
+Do NOT include any unfilled template placeholders like [Date], [Manager Name], [Your Name], or any bracketed variables. Only include real content.
 
 Transcript:
 ${transcript}`,

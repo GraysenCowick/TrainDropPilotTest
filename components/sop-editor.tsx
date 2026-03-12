@@ -121,6 +121,28 @@ export function SOPEditor({ value, onChange, readOnly = false, loading = false }
                   {children}
                 </strong>
               ),
+              table: ({ children }) => (
+                <div className="overflow-x-auto mb-4">
+                  <table className="w-full text-sm border-collapse">
+                    {children}
+                  </table>
+                </div>
+              ),
+              thead: ({ children }) => (
+                <thead className="border-b border-[var(--color-border)]">{children}</thead>
+              ),
+              tbody: ({ children }) => <tbody>{children}</tbody>,
+              tr: ({ children }) => (
+                <tr className="border-b border-[var(--color-border)]/50">{children}</tr>
+              ),
+              th: ({ children }) => (
+                <th className="px-3 py-2 text-left font-semibold text-text-primary whitespace-nowrap">
+                  {children}
+                </th>
+              ),
+              td: ({ children }) => (
+                <td className="px-3 py-2 text-text-secondary">{children}</td>
+              ),
             }}
           >
             {value || "*No SOP content yet.*"}

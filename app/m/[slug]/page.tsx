@@ -186,7 +186,7 @@ export default function PublicModulePage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-[var(--color-border)] bg-surface/50 backdrop-blur-xl">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <Logo />
           {employee && (
             <div className="text-right">
@@ -199,7 +199,8 @@ export default function PublicModulePage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <div className="max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold text-text-primary mb-6">
           {module.title}
         </h1>
@@ -223,7 +224,7 @@ export default function PublicModulePage() {
               Standard Operating Procedure
             </h2>
             <div
-              className="bg-surface border border-[var(--color-border)] rounded-xl p-6 max-h-[600px] overflow-y-auto"
+              className="bg-surface border border-[var(--color-border)] rounded-xl p-6"
             >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -267,6 +268,28 @@ export default function PublicModulePage() {
                     </strong>
                   ),
                   hr: () => <hr className="border-[var(--color-border)] my-4" />,
+                  table: ({ children }) => (
+                    <div className="overflow-x-auto mb-4">
+                      <table className="w-full text-sm border-collapse">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  thead: ({ children }) => (
+                    <thead className="border-b border-[var(--color-border)]">{children}</thead>
+                  ),
+                  tbody: ({ children }) => <tbody>{children}</tbody>,
+                  tr: ({ children }) => (
+                    <tr className="border-b border-[var(--color-border)]/50">{children}</tr>
+                  ),
+                  th: ({ children }) => (
+                    <th className="px-3 py-2 text-left font-semibold text-text-primary whitespace-nowrap">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="px-3 py-2 text-text-secondary">{children}</td>
+                  ),
                 }}
               >
                 {module.sop_content}
@@ -317,6 +340,7 @@ export default function PublicModulePage() {
               </Button>
             </div>
           )}
+        </div>
         </div>
       </main>
 

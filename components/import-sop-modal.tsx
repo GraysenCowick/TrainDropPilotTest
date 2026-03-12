@@ -15,6 +15,96 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ACCEPTED_VIDEO_TYPES } from "@/lib/constants";
+import { createClient } from "@/lib/supabase/client";
+
+// ── Audio extraction (same logic as new module page) ─────────────────────────
+function writeStr(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
+  const numSamples = audioBuffer.length;
+  const sampleRate = audioBuffer.sampleRate;
+  const dataLen = numSamples * 2;
+  const buf = new ArrayBuffer(44 + dataLen);
+  const view = new DataView(buf);
+  writeStr(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(view, 8, "WAVE");
+  writeStr(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(view, 36, "data");
+  view.setUint32(40, dataLen, true);
+  const pcm = audioBuffer.getChannelData(0);
+  let offset = 44;
+  for (let i = 0; i < numSamples; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(offset, s * 0x7fff, true);
+    offset += 2;
+  }
+  return buf;
+}
+
+async function extractAudioFromVideo(file: File): Promise<File> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const tmpCtx = new AudioContext();
+    const raw = await tmpCtx.decodeAudioData(arrayBuffer.slice(0));
+    await tmpCtx.close();
+    const TARGET_RATE = 16_000;
+    const offCtx = new OfflineAudioContext(1, Math.ceil(raw.duration * TARGET_RATE), TARGET_RATE);
+    const src = offCtx.createBufferSource();
+    src.buffer = raw;
+    src.connect(offCtx.destination);
+    src.start(0);
+    const resampled = await offCtx.startRendering();
+    return new File([encodeWav(resampled)], "audio.wav", { type: "audio/wav" });
+  } catch {
+    // fallthrough
+  }
+  return new Promise<File>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;";
+    document.body.appendChild(video);
+    video.src = url;
+    video.preload = "auto";
+    const cleanup = () => {
+      try { document.body.removeChild(video); } catch { /* already removed */ }
+      URL.revokeObjectURL(url);
+    };
+    video.addEventListener("error", () => { cleanup(); reject(new Error("Browser cannot decode this video format")); });
+    video.addEventListener("loadedmetadata", () => {
+      const audioCtx = new AudioContext({ sampleRate: 16_000 });
+      const source = audioCtx.createMediaElementSource(video);
+      const dest = audioCtx.createMediaStreamDestination();
+      source.connect(dest);
+      source.connect(audioCtx.destination);
+      let mimeType = "";
+      for (const m of ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"]) {
+        if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; }
+      }
+      const recorder = mimeType ? new MediaRecorder(dest.stream, { mimeType }) : new MediaRecorder(dest.stream);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+      recorder.onstop = () => {
+        cleanup();
+        audioCtx.close();
+        const type = recorder.mimeType;
+        const ext = type.includes("mp4") ? "m4a" : "webm";
+        resolve(new File(chunks, `audio.${ext}`, { type }));
+      };
+      recorder.start();
+      video.play().then(() => { video.addEventListener("ended", () => recorder.stop()); }).catch((err) => { cleanup(); reject(err); });
+    });
+  });
+}
 
 type FileType = "pdf" | "docx" | "video";
 type ItemStatus = "queued" | "processing" | "done" | "error";
@@ -90,22 +180,56 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
     updateItem(item.id, { status: "processing" });
     try {
       if (item.fileType === "video") {
-        const fd = new FormData();
-        fd.append("video", item.file);
-        const uploadRes = await fetch("/api/upload-video", { method: "POST", body: fd, signal });
-        if (!uploadRes.ok) {
-          const err = await uploadRes.json();
-          throw new Error(err.error || "Upload failed");
+        // Step 1: Extract audio client-side
+        let audioFile: File;
+        try {
+          audioFile = await extractAudioFromVideo(item.file);
+        } catch {
+          throw new Error("Could not read audio from this video. Try a different format.");
         }
-        const { signedUrl } = await uploadRes.json();
 
+        // Step 2: Get presigned upload URLs for video + audio
+        const [videoUrlRes, audioUrlRes] = await Promise.all([
+          fetch("/api/upload-video", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: item.file.name }),
+            signal,
+          }),
+          fetch("/api/upload-video", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: "audio.wav" }),
+            signal,
+          }),
+        ]);
+        if (!videoUrlRes.ok || !audioUrlRes.ok) throw new Error("Failed to prepare upload");
+
+        const { path: videoPath, token: videoToken, publicUrl: videoPublicUrl } = await videoUrlRes.json();
+        const { path: audioPath, token: audioToken, publicUrl: audioPublicUrl } = await audioUrlRes.json();
+
+        // Step 3: Upload video + audio directly to Supabase
+        const supabase = createClient();
+        const [videoUpload, audioUpload] = await Promise.all([
+          supabase.storage.from("processed").uploadToSignedUrl(videoPath, videoToken, item.file, {
+            contentType: item.file.type || "video/mp4",
+          }),
+          supabase.storage.from("processed").uploadToSignedUrl(audioPath, audioToken, audioFile, {
+            contentType: "audio/wav",
+          }),
+        ]);
+        if (videoUpload.error) throw new Error(`Video upload failed: ${videoUpload.error.message}`);
+        if (audioUpload.error) throw new Error(`Audio upload failed: ${audioUpload.error.message}`);
+
+        // Step 4: Create module + trigger pipeline
         const modRes = await fetch("/api/modules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             input_type: "video",
             title: item.file.name.replace(/\.[^.]+$/, ""),
-            original_video_url: signedUrl,
+            original_video_url: videoPublicUrl,
+            audio_url: audioPublicUrl,
           }),
           signal,
         });
@@ -149,7 +273,11 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
     }
     abortRef.current = null;
     setRunning(false);
-    if (!controller.signal.aborted) router.refresh();
+    if (!controller.signal.aborted) {
+      setItems([]);
+      onClose();
+      router.push("/dashboard");
+    }
   }
 
   function handleCancel() {

@@ -9,6 +9,7 @@ import type { ModuleStatus } from "@/lib/supabase/types";
 interface ProcessingStatusProps {
   moduleId: string;
   inputType: "text" | "video";
+  onComplete?: () => void;
 }
 
 interface Step {
@@ -20,6 +21,7 @@ interface Step {
 export function ProcessingStatus({
   moduleId,
   inputType,
+  onComplete,
 }: ProcessingStatusProps) {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
@@ -91,7 +93,7 @@ export function ProcessingStatus({
         (payload) => {
           const newStatus = payload.new?.status as ModuleStatus;
           if (newStatus === "ready" || newStatus === "published") {
-            router.refresh();
+            onComplete ? onComplete() : router.refresh();
           }
         }
       )
@@ -107,7 +109,7 @@ export function ProcessingStatus({
 
       const row = data as { status: ModuleStatus } | null;
       if (row?.status === "ready" || row?.status === "published") {
-        router.refresh();
+        onComplete ? onComplete() : router.refresh();
       }
     }, 5000);
 

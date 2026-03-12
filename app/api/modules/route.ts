@@ -3,7 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
 import { runVideoPipeline } from "@/lib/video/pipeline";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET() {
   const supabase = await createClient();

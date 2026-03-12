@@ -185,7 +185,7 @@ export default function TrackViewPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-[var(--color-border)] bg-surface/50 backdrop-blur-xl sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between mb-3">
             <Logo />
             <div className="text-right">
@@ -211,7 +211,8 @@ export default function TrackViewPage() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-8 flex gap-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <div className="max-w-4xl mx-auto flex gap-8">
         {/* Sidebar: module list */}
         <aside className="hidden md:flex flex-col gap-1 w-56 shrink-0">
           <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">
@@ -377,6 +378,7 @@ export default function TrackViewPage() {
             )}
           </div>
         </main>
+      </div>
       </div>
     </div>
   );

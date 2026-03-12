@@ -52,7 +52,8 @@ function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
 }
 
 async function extractAudioFromVideo(file: File): Promise<File> {
-  try {
+  const isMov = file.name.toLowerCase().endsWith(".mov") || file.type === "video/quicktime";
+  if (!isMov) try {
     const arrayBuffer = await file.arrayBuffer();
     const tmpCtx = new AudioContext();
     const raw = await tmpCtx.decodeAudioData(arrayBuffer.slice(0));
@@ -104,7 +105,6 @@ async function extractAudioFromVideo(file: File): Promise<File> {
         resolve(new File(chunks, `audio.${ext}`, { type }));
       };
       recorder.start();
-      video.muted = true;
       video.play().then(() => { video.addEventListener("ended", () => recorder.stop()); }).catch((err) => { cleanup(); reject(err); });
     });
   });

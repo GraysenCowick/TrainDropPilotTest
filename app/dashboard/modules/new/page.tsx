@@ -66,8 +66,11 @@ function encodeWav(audioBuffer: AudioBuffer): ArrayBuffer {
 }
 
 async function extractAudioFromVideo(file: File): Promise<File> {
-  // Fast path (Chrome/Firefox): decodeAudioData handles MP4/MOV containers
-  try {
+  // Fast path (Chrome/Firefox): decodeAudioData works for MP4/AAC containers.
+  // Skip for MOV/QuickTime — the Web Audio API does not support that container
+  // even though the <video> element can play it via OS codecs.
+  const isMov = file.name.toLowerCase().endsWith(".mov") || file.type === "video/quicktime";
+  if (!isMov) try {
     const arrayBuffer = await file.arrayBuffer();
     const tmpCtx = new AudioContext();
     const raw = await tmpCtx.decodeAudioData(arrayBuffer.slice(0));
@@ -85,10 +88,11 @@ async function extractAudioFromVideo(file: File): Promise<File> {
     // fall through to video-element fallback
   }
 
-  // Fallback (Safari + any format the browser can play).
-  // Records audio in real-time while the hidden video plays.
-  // Video element is muted so audio routes through AudioContext only,
-  // and a gain=0 node silences the output while keeping the graph active.
+  // Fallback (Safari + MOV + any format the browser can play).
+  // Records audio in real-time while a hidden video plays.
+  // Audio is intercepted by AudioContext (createMediaElementSource), routed to
+  // the MediaRecorder via MediaStreamDestination, and silenced to speakers via
+  // a GainNode at 0. Do NOT set video.muted — that also mutes the AudioContext.
   return new Promise<File>((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const video = document.createElement("video");
@@ -142,7 +146,6 @@ async function extractAudioFromVideo(file: File): Promise<File> {
       };
 
       recorder.start();
-      video.muted = true;
       video.play()
         .then(() => { video.addEventListener("ended", () => recorder.stop()); })
         .catch((err) => { cleanup(); reject(err); });

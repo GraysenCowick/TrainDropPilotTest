@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
-  RefreshCw,
+  Wand2,
   Globe,
   EyeOff,
   Trash2,
@@ -42,35 +42,35 @@ export default function ModuleDetailPage() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [showCompletionStatus, setShowCompletionStatus] = useState(false);
 
-  // Regenerate rate-limit state
-  const [regenerating, setRegenerating] = useState(false);
-  const [regenCount, setRegenCount] = useState(0);
-  const REGEN_MAX = 3;
-  const REGEN_WINDOW = 5 * 60 * 1000; // 5 minutes
+  // Refine SOP state
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineInstruction, setRefineInstruction] = useState("");
+  const [refining, setRefining] = useState(false);
+  const [refineCount, setRefineCount] = useState(0);
+  const REFINE_MAX = 5;
+  const REFINE_WINDOW = 5 * 60 * 1000; // 5 minutes
 
-  function getRegenTimestamps(): number[] {
+  function getRefineTimestamps(): number[] {
     try {
-      const raw = localStorage.getItem(`regen_${id}`);
+      const raw = localStorage.getItem(`refine_${id}`);
       if (!raw) return [];
       return JSON.parse(raw);
     } catch { return []; }
   }
 
-  function refreshRegenCount() {
+  function refreshRefineCount() {
     const now = Date.now();
-    const recent = getRegenTimestamps().filter((t) => now - t < REGEN_WINDOW);
-    setRegenCount(recent.length);
+    const recent = getRefineTimestamps().filter((t) => now - t < REFINE_WINDOW);
+    setRefineCount(recent.length);
   }
 
-  function recordRegen() {
+  function recordRefine() {
     const now = Date.now();
-    const recent = getRegenTimestamps().filter((t) => now - t < REGEN_WINDOW);
+    const recent = getRefineTimestamps().filter((t) => now - t < REFINE_WINDOW);
     recent.push(now);
-    localStorage.setItem(`regen_${id}`, JSON.stringify(recent));
-    setRegenCount(recent.length);
+    localStorage.setItem(`refine_${id}`, JSON.stringify(recent));
+    setRefineCount(recent.length);
   }
-
-  const canRegenerate = regenCount < REGEN_MAX && !regenerating;
 
   useEffect(() => {
     fetchModule();
@@ -88,7 +88,7 @@ export default function ModuleDetailPage() {
     setTitle(data.title || "");
     setSopContent(data.sop_content || "");
     setLoading(false);
-    refreshRegenCount();
+    refreshRefineCount();
   }
 
   async function handleSave() {
@@ -132,18 +132,26 @@ export default function ModuleDetailPage() {
     }
   }
 
-  async function handleRegenerate() {
-    if (!canRegenerate) return;
-    recordRegen();
-    setRegenerating(true);
-    const res = await fetch(`/api/modules/${id}/regenerate-sop`, { method: "POST" });
+  async function handleRefine() {
+    if (!refineInstruction.trim() || refineCount >= REFINE_MAX) return;
+    recordRefine();
+    setRefining(true);
+    const res = await fetch(`/api/modules/${id}/refine-sop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction: refineInstruction.trim() }),
+    });
     if (res.ok) {
-      await fetchModule();
+      const data = await res.json();
+      setSopContent(data.sop_content);
+      setRefineInstruction("");
+      setRefineOpen(false);
+      toast("SOP updated", "success");
     } else {
-      toast("Failed to regenerate", "error");
-      refreshRegenCount();
+      toast("Failed to refine SOP", "error");
+      refreshRefineCount();
     }
-    setRegenerating(false);
+    setRefining(false);
   }
 
   async function handleDelete() {
@@ -205,26 +213,16 @@ export default function ModuleDetailPage() {
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-          {(module.status === "ready" || module.status === "error") && (
-            <div className="flex flex-col items-end gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRegenerate}
-                disabled={!canRegenerate}
-                loading={regenerating}
-              >
-                {!regenerating && <RefreshCw className="h-4 w-4" />}
-                <span className="hidden sm:inline">
-                  {regenerating ? "Regenerating…" : "Regenerate"}
-                </span>
-              </Button>
-              {regenCount >= REGEN_MAX && (
-                <p className="text-xs text-text-secondary pr-1">
-                  Please wait before regenerating again.
-                </p>
-              )}
-            </div>
+          {module.status === "ready" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRefineOpen((v) => !v)}
+              disabled={refining}
+            >
+              <Wand2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Refine</span>
+            </Button>
           )}
 
           {module.status === "ready" && (
@@ -328,6 +326,48 @@ export default function ModuleDetailPage() {
             </div>
           )}
 
+          {/* Refine panel */}
+          {refineOpen && (
+            <div className="bg-surface border border-accent/20 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Wand2 className="h-4 w-4 text-accent" />
+                <p className="text-sm font-medium text-text-primary">Refine SOP with AI</p>
+              </div>
+              <textarea
+                value={refineInstruction}
+                onChange={(e) => setRefineInstruction(e.target.value)}
+                placeholder={`Describe what you'd like to change… e.g. "Add a safety section before Step 1", "Make the tone more formal", "Expand Phase 2 with more detail"`}
+                className="w-full bg-background border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder:text-text-secondary resize-none focus:outline-none focus:ring-2 focus:ring-accent/30 min-h-[88px]"
+                disabled={refining}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-text-secondary">
+                  {REFINE_MAX - refineCount} of {REFINE_MAX} refinements remaining
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setRefineOpen(false); setRefineInstruction(""); }}
+                    disabled={refining}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleRefine}
+                    loading={refining}
+                    disabled={!refineInstruction.trim() || refineCount >= REFINE_MAX}
+                  >
+                    {!refining && <Wand2 className="h-4 w-4" />}
+                    {refining ? "Applying…" : "Apply Changes"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* SOP Editor */}
           <div>
             <h2 className="text-sm font-semibold text-text-primary mb-3">
@@ -337,7 +377,7 @@ export default function ModuleDetailPage() {
               value={sopContent}
               onChange={setSopContent}
               readOnly={false}
-              loading={regenerating}
+              loading={refining}
             />
           </div>
 

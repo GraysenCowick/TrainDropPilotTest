@@ -75,6 +75,37 @@ ${rawNotes}`,
   return JSON.parse(jsonMatch[0]);
 }
 
+export async function refineSOP(currentSOP: string, instruction: string): Promise<string> {
+  const message = await client.messages.create({
+    model: "claude-opus-4-6",
+    max_tokens: 4096,
+    messages: [
+      {
+        role: "user",
+        content: `You are editing an existing Standard Operating Procedure (SOP). Apply the requested changes while preserving the overall structure, markdown formatting, and all content that was not mentioned.
+
+RULES:
+- Only change what is explicitly requested
+- Preserve all markdown formatting (##, ###, bullet points, numbered lists)
+- Keep the same professional tone and writing style
+- Do NOT add commentary or explanation — return only the updated SOP markdown
+
+Current SOP:
+${currentSOP}
+
+Requested changes:
+${instruction}
+
+Return ONLY the updated SOP in markdown. No JSON, no preamble, just the markdown.`,
+      },
+    ],
+  });
+
+  const content = message.content[0];
+  if (content.type !== "text") throw new Error("Unexpected response type");
+  return content.text.trim();
+}
+
 export async function analyzeTranscript(
   transcript: string
 ): Promise<TranscriptAnalysisResult> {

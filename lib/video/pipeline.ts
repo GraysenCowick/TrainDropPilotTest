@@ -69,7 +69,9 @@ export async function runVideoPipeline(
       .eq("id", moduleId);
 
     // ── Step 3: Generate VTT captions ─────────────────────────────────────
-    const vttContent = generateVTT(transcript.words);
+    // Pass segments as fallback — Whisper sometimes returns an incomplete words
+    // array (truncated at ~15s) but always returns full segment timestamps.
+    const vttContent = generateVTT(transcript.words, transcript.segments);
 
     // ── Step 4: Finalize ──────────────────────────────────────────────────
     await markStep("finalizing");

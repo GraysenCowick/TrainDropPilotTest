@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, FileText, Video, AlertCircle } from "lucide-react";
+import { ArrowLeft, FileText, Video, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -433,14 +433,26 @@ export default function NewModulePage() {
             </Button>
           </div>
         ) : (
-          <div className="bg-surface border border-[var(--color-border)] rounded-xl p-8">
-            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
-              <div
-                className="h-full bg-accent rounded-full transition-all duration-700 ease-in-out"
-                style={{ width: `${percent}%` }}
-              />
+          <div className="bg-surface border border-[var(--color-border)] rounded-xl p-8 flex flex-col items-center gap-6">
+            {/* Spinning wheel */}
+            <div className="relative w-14 h-14">
+              <div className="absolute inset-0 rounded-full border-2 border-accent/20" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" />
+              <div className="absolute inset-[5px] rounded-full bg-accent/10 flex items-center justify-center">
+                <Loader2 className="h-4 w-4 text-accent animate-spin" style={{ animationDirection: "reverse" }} />
+              </div>
             </div>
-            <p className="text-sm text-text-secondary text-center">{label}</p>
+
+            {/* Progress bar */}
+            <div className="w-full">
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-3">
+                <div
+                  className="h-full bg-accent rounded-full transition-all duration-700 ease-in-out"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <p className="text-sm text-text-secondary text-center">{label}</p>
+            </div>
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, FileText, LayoutGrid, Users, ListOrdered, Trash2, Upload } from "lucide-react";
@@ -37,6 +37,13 @@ interface DashboardContentProps {
 export function DashboardContent({ modules, tracks, teamMemberCount }: DashboardContentProps) {
   const [tab, setTab] = useState<Tab>("modules");
   const [importOpen, setImportOpen] = useState(false);
+
+  // Read ?tab= from URL on mount (e.g. navigated here from "Add Team Members" button)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("tab");
+    if (t === "modules" || t === "tracks" || t === "team") setTab(t);
+  }, []);
 
   return (
     <div>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, Link as LinkIcon, Check, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Mail, Link as LinkIcon, Check, Users, UserPlus } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -16,6 +17,7 @@ interface SendToTeamModalProps {
 
 export function SendToTeamModal({ open, onClose, moduleId, moduleSlug }: SendToTeamModalProps) {
   const { toast } = useToast();
+  const router = useRouter();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingMembers, setLoadingMembers] = useState(true);
@@ -125,12 +127,22 @@ export function SendToTeamModal({ open, onClose, moduleId, moduleSlug }: SendToT
             ))}
           </div>
         ) : members.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <Users className="h-8 w-8 text-text-secondary opacity-40 mb-2" />
-            <p className="text-sm text-text-secondary">No team members yet.</p>
-            <p className="text-xs text-text-secondary opacity-60 mt-1">
-              Add employees from the Team tab on your dashboard.
-            </p>
+          <div className="flex flex-col items-center justify-center py-8 text-center gap-4">
+            <Users className="h-8 w-8 text-text-secondary opacity-40" />
+            <div>
+              <p className="text-sm text-text-secondary">No team members yet.</p>
+              <p className="text-xs text-text-secondary opacity-60 mt-1">
+                Add employees to send them this module.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => { onClose(); router.push("/dashboard?tab=team"); }}
+            >
+              <UserPlus className="h-4 w-4" />
+              Add Team Members
+            </Button>
           </div>
         ) : (
           <>

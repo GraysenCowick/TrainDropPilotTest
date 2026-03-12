@@ -33,6 +33,7 @@ export function VideoPlayer({
 
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [captionsOn, setCaptionsOn] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -50,6 +51,19 @@ export function VideoPlayer({
     setVttBlobUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [vttContent]);
+
+  // Sync caption visibility via the TextTrack API
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !vttBlobUrl) return;
+    const apply = () => {
+      const track = video.textTracks[0];
+      if (track) track.mode = captionsOn ? "showing" : "hidden";
+    };
+    apply();
+    video.addEventListener("loadedmetadata", apply);
+    return () => video.removeEventListener("loadedmetadata", apply);
+  }, [captionsOn, vttBlobUrl]);
 
   // Sync mute state to the video element
   useEffect(() => {
@@ -142,7 +156,6 @@ export function VideoPlayer({
               src={vttBlobUrl}
               srcLang="en"
               label="Captions"
-              default
             />
           )}
         </video>
@@ -187,6 +200,19 @@ export function VideoPlayer({
                 <Volume2 className="h-4 w-4" />
               )}
             </button>
+
+            {hasCaption && (
+              <button
+                onClick={() => setCaptionsOn((v) => !v)}
+                className={`text-xs font-bold px-1.5 py-0.5 rounded transition-colors ${
+                  captionsOn
+                    ? "bg-accent text-background"
+                    : "text-white/60 hover:text-white"
+                }`}
+              >
+                CC
+              </button>
+            )}
 
             <button
               onClick={() => videoRef.current?.requestFullscreen()}

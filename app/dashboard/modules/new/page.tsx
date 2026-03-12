@@ -131,8 +131,12 @@ async function extractAudioFromVideo(file: File): Promise<File> {
       const source = audioCtx.createMediaElementSource(video);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(dest);
-      // Also connect to destination so the browser drives playback
-      source.connect(audioCtx.destination);
+      // Connect to a silent gain node to keep the audio graph running without
+      // routing audio to the speakers.
+      const silence = audioCtx.createGain();
+      silence.gain.value = 0;
+      source.connect(silence);
+      silence.connect(audioCtx.destination);
 
       // Pick best supported audio format (Safari uses mp4, Chrome uses webm)
       let mimeType = "";
@@ -155,6 +159,7 @@ async function extractAudioFromVideo(file: File): Promise<File> {
       };
 
       recorder.start();
+      video.muted = true;
       video.play().then(() => {
         video.addEventListener("ended", () => recorder.stop());
       }).catch((err) => { cleanup(); reject(err); });
@@ -263,12 +268,14 @@ export default function NewModulePage() {
     // ── Step 1: Extract audio from the video in the browser ──────────────────
     // Produces a tiny WAV file (~1 MB/min at 16 kHz mono).
     // Whisper receives this small file instead of the full video — no 25 MB limit hit.
+    setProgress((p) => ({ ...p, uploadProgress: 15 })); // show immediate feedback
     let audioFile: File;
     try {
       audioFile = await extractAudioFromVideo(videoFile);
     } catch {
       throw new Error("Could not read audio from this video. Please try a different file format.");
     }
+    setProgress((p) => ({ ...p, uploadProgress: 55 })); // extraction done
 
     // ── Step 2: Get presigned upload URLs for video + audio ───────────────────
     const [videoUrlRes, audioUrlRes] = await Promise.all([

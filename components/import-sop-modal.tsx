@@ -85,7 +85,10 @@ async function extractAudioFromVideo(file: File): Promise<File> {
       const source = audioCtx.createMediaElementSource(video);
       const dest = audioCtx.createMediaStreamDestination();
       source.connect(dest);
-      source.connect(audioCtx.destination);
+      const silence = audioCtx.createGain();
+      silence.gain.value = 0;
+      source.connect(silence);
+      silence.connect(audioCtx.destination);
       let mimeType = "";
       for (const m of ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"]) {
         if (MediaRecorder.isTypeSupported(m)) { mimeType = m; break; }
@@ -101,6 +104,7 @@ async function extractAudioFromVideo(file: File): Promise<File> {
         resolve(new File(chunks, `audio.${ext}`, { type }));
       };
       recorder.start();
+      video.muted = true;
       video.play().then(() => { video.addEventListener("ended", () => recorder.stop()); }).catch((err) => { cleanup(); reject(err); });
     });
   });

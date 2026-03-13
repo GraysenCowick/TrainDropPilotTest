@@ -25,23 +25,47 @@ export async function POST(request: NextRequest) {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     file.name.toLowerCase().endsWith(".docx");
 
-  if (isPDF) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PDFParse } = require("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    const result = await parser.getText();
-    await parser.destroy();
-    extractedText = result.text;
-  } else if (isDOCX) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mammoth = require("mammoth");
-    const result = await mammoth.extractRawText({ buffer });
-    extractedText = result.value;
-  } else {
-    return NextResponse.json({ error: "Unsupported file type. Use PDF or DOCX." }, { status: 400 });
+  try {
+    if (isPDF) {
+      // Use pdfjs-dist directly — more reliable than the pdf-parse wrapper in serverless.
+      // pdfjs-dist is in serverExternalPackages so it loads from node_modules at runtime.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs" as any);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfjs: any = pdfjsModule.default ?? pdfjsModule;
+      // Resolve the worker file from node_modules at runtime (avoids bundling issues).
+      pdfjs.GlobalWorkerOptions.workerSrc = `${process.cwd()}/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs`;
+      const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pages.push(content.items.map((item: any) => item.str).join(" "));
+      }
+      await doc.destroy();
+      extractedText = pages.join("\n");
+    } else if (isDOCX) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mammoth = require("mammoth");
+      const result = await mammoth.extractRawText({ buffer });
+      extractedText = result.value;
+    } else {
+      return NextResponse.json({ error: "Unsupported file type. Use PDF or DOCX." }, { status: 400 });
+    }
+  } catch (parseErr) {
+    const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    console.error("[import-sop] extraction failed:", msg);
+    return NextResponse.json(
+      { error: "Could not read this file. It may be encrypted, password-protected, or image-based." },
+      { status: 422 }
+    );
   }
 
-  if (!extractedText.trim()) {
+  // Strip null bytes — PostgreSQL rejects text with embedded \x00 characters.
+  extractedText = extractedText.replace(/\x00/g, "").trim();
+
+  if (!extractedText) {
     return NextResponse.json(
       { error: "No text could be extracted. The file may be scanned or image-based." },
       { status: 422 }

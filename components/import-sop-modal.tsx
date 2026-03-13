@@ -180,7 +180,7 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
   }
 
-  async function processItem(item: ImportItem, signal: AbortSignal) {
+  async function processItem(item: ImportItem, signal: AbortSignal): Promise<boolean> {
     updateItem(item.id, { status: "processing" });
     try {
       if (item.fileType === "video") {
@@ -254,6 +254,7 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
         const data = await res.json();
         updateItem(item.id, { status: "done", moduleId: data.id });
       }
+      return true;
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         updateItem(item.id, { status: "queued" });
@@ -263,6 +264,7 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
           error: err instanceof Error ? err.message : "Something went wrong",
         });
       }
+      return false;
     }
   }
 
@@ -271,16 +273,19 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
     abortRef.current = controller;
     setRunning(true);
     const queued = items.filter((i) => i.status === "queued");
+    let errorCount = 0;
     for (const item of queued) {
       if (controller.signal.aborted) break;
-      await processItem(item, controller.signal);
+      const success = await processItem(item, controller.signal);
+      if (!success) errorCount++;
     }
     abortRef.current = null;
     setRunning(false);
-    if (!controller.signal.aborted) {
+    if (!controller.signal.aborted && errorCount === 0) {
       setItems([]);
       onClose();
       router.push("/dashboard");
+      router.refresh();
     }
   }
 
@@ -289,12 +294,12 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
   }
 
   function handleClose() {
-    if (running) {
-      abortRef.current?.abort();
-      return;
-    }
+    abortRef.current?.abort();
+    const hasDone = items.some((i) => i.status === "done");
     setItems([]);
+    setRunning(false);
     onClose();
+    if (hasDone) router.refresh();
   }
 
   const queuedItems = items.filter((i) => i.status === "queued");
@@ -402,28 +407,38 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
       {/* Footer */}
       <div className="flex items-center justify-between gap-3 pt-1">
         <p className="text-xs text-text-secondary">
-          {allDone
+          {running
+            ? `Processing files…`
+            : allDone
             ? `${doneCount} of ${items.length} imported${errorItems.length > 0 ? ` (${errorItems.length} failed)` : ""}`
             : items.length > 0
             ? `${items.length} file${items.length !== 1 ? "s" : ""} ready`
             : "No files selected yet"}
         </p>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={running ? handleCancel : handleClose}>
-            {allDone ? "Close" : "Cancel"}
-          </Button>
-          {!allDone && (
+          {running ? (
+            <Button variant="secondary" size="sm" onClick={handleCancel}>
+              Stop Import
+            </Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={handleClose}>
+              {allDone ? "Close" : "Cancel"}
+            </Button>
+          )}
+          {!allDone && !running && (
             <Button
               variant="primary"
               size="sm"
               onClick={handleImport}
-              loading={running}
-              disabled={queuedItems.length === 0 || running}
+              disabled={queuedItems.length === 0}
             >
               <Upload className="h-4 w-4" />
-              {running
-                ? "Importing Files"
-                : `Import ${queuedItems.length} ${queuedItems.length === 1 ? "file" : "files"}`}
+              {`Import ${queuedItems.length} ${queuedItems.length === 1 ? "file" : "files"}`}
+            </Button>
+          )}
+          {running && (
+            <Button variant="primary" size="sm" disabled loading>
+              Importing…
             </Button>
           )}
         </div>

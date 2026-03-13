@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
-  serverExternalPackages: ["fluent-ffmpeg", "@ffmpeg-installer/ffmpeg", "pdf-parse", "mammoth"],
+  serverExternalPackages: ["fluent-ffmpeg", "@ffmpeg-installer/ffmpeg", "pdf-parse", "mammoth", "pdfjs-dist"],
   images: {
     remotePatterns: [
       {

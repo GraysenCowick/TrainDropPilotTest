@@ -27,24 +27,12 @@ export async function POST(request: NextRequest) {
 
   try {
     if (isPDF) {
-      // Use pdfjs-dist directly — more reliable than the pdf-parse wrapper in serverless.
-      // pdfjs-dist is in serverExternalPackages so it loads from node_modules at runtime.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfjsModule = await import("pdfjs-dist/legacy/build/pdf.mjs" as any);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pdfjs: any = pdfjsModule.default ?? pdfjsModule;
-      // Resolve the worker file from node_modules at runtime (avoids bundling issues).
-      pdfjs.GlobalWorkerOptions.workerSrc = `${process.cwd()}/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs`;
-      const doc = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise;
-      const pages: string[] = [];
-      for (let i = 1; i <= doc.numPages; i++) {
-        const page = await doc.getPage(i);
-        const content = await page.getTextContent();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pages.push(content.items.map((item: any) => item.str).join(" "));
-      }
-      await doc.destroy();
-      extractedText = pages.join("\n");
+      // pdf-parse v1.1.1 — pure-JS, bundles pdfjs-dist v2, no native deps.
+      // Proven to work in serverless (no Worker threads, no @napi-rs/canvas).
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+      const pdfParse = require("pdf-parse") as any;
+      const data = await pdfParse(buffer);
+      extractedText = data.text;
     } else if (isDOCX) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mammoth = require("mammoth");

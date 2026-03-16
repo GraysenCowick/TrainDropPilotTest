@@ -37,6 +37,7 @@ interface DashboardContentProps {
 export function DashboardContent({ modules, tracks, teamMemberCount }: DashboardContentProps) {
   const [tab, setTab] = useState<Tab>("modules");
   const [importOpen, setImportOpen] = useState(false);
+  const [teamCount, setTeamCount] = useState(teamMemberCount);
 
   // Read ?tab= from URL on mount (e.g. navigated here from "Add Team Members" button)
   useEffect(() => {
@@ -81,7 +82,7 @@ export function DashboardContent({ modules, tracks, teamMemberCount }: Dashboard
         {(["modules", "tracks", "team"] as Tab[]).map((t) => {
           const icons = { modules: <LayoutGrid className="h-4 w-4" />, tracks: <ListOrdered className="h-4 w-4" />, team: <Users className="h-4 w-4" /> };
           const labels = { modules: "Modules", tracks: "Tracks", team: "Team" };
-          const counts = { modules: modules.length, tracks: tracks.length, team: teamMemberCount };
+          const counts = { modules: modules.length, tracks: tracks.length, team: teamCount };
           return (
             <button
               key={t}
@@ -120,7 +121,7 @@ export function DashboardContent({ modules, tracks, teamMemberCount }: Dashboard
         )
       )}
 
-      {tab === "team" && <TeamTab />}
+      {tab === "team" && <TeamTab onCountChange={setTeamCount} />}
 
       <ImportSOPModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>

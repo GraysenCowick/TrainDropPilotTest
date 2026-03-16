@@ -8,7 +8,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import type { TeamMember } from "@/lib/supabase/types";
 
-export function TeamTab() {
+export function TeamTab({ onCountChange }: { onCountChange?: (count: number) => void }) {
   const { toast } = useToast();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +36,9 @@ export function TeamTab() {
     setLoading(true);
     const res = await fetch("/api/team");
     if (res.ok) {
-      setMembers(await res.json());
+      const data = await res.json();
+      setMembers(data);
+      onCountChange?.(data.length);
     }
     setLoading(false);
   }

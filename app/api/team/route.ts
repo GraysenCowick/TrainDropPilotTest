@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 export async function GET() {
   const supabase = await createClient();
@@ -25,6 +25,13 @@ export async function POST(request: NextRequest) {
   if (!name?.trim() || !email?.trim()) {
     return NextResponse.json({ error: "Name and email are required" }, { status: 400 });
   }
+
+  // Guarantee profile exists before FK-dependent insert
+  const admin = await createAdminClient();
+  await (admin as any).from("profiles").upsert(
+    { id: user.id, email: user.email },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any)

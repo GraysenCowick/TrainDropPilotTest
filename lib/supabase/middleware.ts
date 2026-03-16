@@ -40,6 +40,13 @@ export async function updateSession(request: NextRequest) {
   const isAdmin = user?.email === ADMIN_EMAIL;
   const path = request.nextUrl.pathname;
 
+  // Redirect admin away from dashboard → /admin
+  if (user && isAdmin && path.startsWith("/dashboard")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/admin";
+    return NextResponse.redirect(url);
+  }
+
   // Protect dashboard routes
   if (!user && path.startsWith("/dashboard")) {
     const url = request.nextUrl.clone();

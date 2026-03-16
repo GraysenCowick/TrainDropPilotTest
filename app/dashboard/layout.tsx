@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { DashboardNav } from "@/components/dashboard-nav";
 import { ToastProvider } from "@/components/ui/toast";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({
   children,
@@ -16,6 +16,13 @@ export default async function DashboardLayout({
   if (!user) {
     redirect("/login");
   }
+
+  // Guarantee profile exists — fallback in case DB trigger failed on signup
+  const admin = await createAdminClient();
+  await (admin as any).from("profiles").upsert(
+    { id: user.id, email: user.email },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
 
   const { data: rawProfile } = await supabase
     .from("profiles")

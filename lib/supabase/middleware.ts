@@ -36,21 +36,36 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  const ADMIN_EMAIL = "graysencowick67@gmail.com";
+  const isAdmin = user?.email === ADMIN_EMAIL;
+  const path = request.nextUrl.pathname;
+
   // Protect dashboard routes
-  if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
+  if (!user && path.startsWith("/dashboard")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  // Redirect logged-in users away from auth pages
-  if (
-    user &&
-    (request.nextUrl.pathname === "/login" ||
-      request.nextUrl.pathname === "/signup")
-  ) {
+  // Protect admin route — unauthenticated → login
+  if (!user && path.startsWith("/admin")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  // Protect admin route — authenticated non-admin → dashboard (silently)
+  if (user && !isAdmin && path.startsWith("/admin")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // Redirect logged-in users away from auth pages
+  if (user && (path === "/login" || path === "/signup")) {
+    const url = request.nextUrl.clone();
+    // Admin goes to /admin, everyone else goes to /dashboard
+    url.pathname = isAdmin ? "/admin" : "/dashboard";
     return NextResponse.redirect(url);
   }
 

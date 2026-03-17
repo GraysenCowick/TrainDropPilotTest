@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatRelativeDate } from "@/lib/utils";
 
@@ -69,6 +70,12 @@ export default function AdminDashboard({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const feedRef = useRef<HTMLDivElement>(null);
   const supabase = createClient();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
 
   const addEvent = useCallback(
     (event: ActivityEvent) => {
@@ -220,6 +227,13 @@ export default function AdminDashboard({
           >
             Manager dashboard →
           </a>
+
+          <button
+            onClick={handleSignOut}
+            className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+          >
+            Sign out
+          </button>
         </div>
       </header>
 

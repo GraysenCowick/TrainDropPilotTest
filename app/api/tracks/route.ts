@@ -46,6 +46,12 @@ export async function POST(request: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const adminAny = admin as any;
 
+  // Guarantee profile exists before FK-dependent insert
+  await adminAny.from("profiles").upsert(
+    { id: user.id, email: user.email },
+    { onConflict: "id", ignoreDuplicates: true }
+  );
+
   const { data: track, error: trackError } = await adminAny
     .from("tracks")
     .insert({ user_id: user.id, title: title.trim(), description: description?.trim() || null })

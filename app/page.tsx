@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
+import { PricingSection } from "@/components/pricing-section";
 
 export default function LandingPage() {
   return (
@@ -268,83 +269,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="py-24 px-4 border-t border-[var(--color-border)]">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary text-center mb-3">
-            Simple pricing
-          </h2>
-          <p className="text-text-secondary text-center mb-14">
-            Start free, upgrade when you need more.
-          </p>
-          <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* Free */}
-            <div className="bg-surface border border-[var(--color-border)] rounded-2xl p-6">
-              <div className="mb-5">
-                <h3 className="text-lg font-bold text-text-primary">Free</h3>
-                <div className="mt-2">
-                  <span className="text-4xl font-bold text-text-primary">$0</span>
-                  <span className="text-text-secondary ml-1 text-sm">/month</span>
-                </div>
-              </div>
-              <ul className="flex flex-col gap-2.5 mb-6">
-                {[
-                  "3 training modules",
-                  "AI-generated SOP",
-                  "Shareable links",
-                  "Completion tracking",
-                ].map((feature) => (
-                  <li key={feature} className="flex items-center gap-2 text-sm text-text-secondary">
-                    <CheckCircle2 className="h-4 w-4 text-accent shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup">
-                <Button variant="secondary" size="md" className="w-full">
-                  Get Started Free
-                </Button>
-              </Link>
-            </div>
-
-            {/* Pro */}
-            <div className="bg-surface border-2 border-accent rounded-2xl p-6 relative">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="bg-accent text-background text-xs font-bold px-3 py-1 rounded-full">
-                  MOST POPULAR
-                </span>
-              </div>
-              <div className="mb-5">
-                <h3 className="text-lg font-bold text-text-primary">Pro</h3>
-                <div className="mt-2">
-                  <span className="text-4xl font-bold text-text-primary">$29</span>
-                  <span className="text-text-secondary ml-1 text-sm">/month</span>
-                </div>
-              </div>
-              <ul className="flex flex-col gap-2.5 mb-6">
-                {[
-                  "Unlimited modules",
-                  "Video upload & processing",
-                  "Auto-captions burned in",
-                  "Onboarding tracks",
-                  "Per-employee completion tracking",
-                  "Time spent analytics",
-                ].map((feature) => (
-                  <li key={feature} className="flex items-center gap-2 text-sm text-text-secondary">
-                    <CheckCircle2 className="h-4 w-4 text-accent shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup">
-                <Button variant="primary" size="md" className="w-full">
-                  Start Free Trial
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <PricingSection />
 
       {/* Final CTA */}
       <section className="py-24 px-4 border-t border-[var(--color-border)]">

@@ -115,7 +115,7 @@ export function PricingSection() {
             </button>
             <button
               onClick={() => setAnnual(!annual)}
-              className={`relative w-12 h-6 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              className={`relative w-12 h-6 shrink-0 rounded-full overflow-hidden transition-colors ${
                 annual ? "bg-accent" : "bg-[var(--color-border)]"
               }`}
               role="switch"
@@ -123,8 +123,8 @@ export function PricingSection() {
               aria-label="Toggle billing period"
             >
               <span
-                className={`absolute top-1 w-4 h-4 rounded-full bg-background transition-transform duration-200 ${
-                  annual ? "translate-x-7" : "translate-x-1"
+                className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-background transition-transform duration-200 ${
+                  annual ? "translate-x-6" : "translate-x-0"
                 }`}
               />
             </button>

@@ -104,7 +104,7 @@ export function PricingSection() {
           </p>
 
           {/* Billing toggle */}
-          <div className="flex items-center justify-center gap-3 mb-14">
+          <div className="flex items-center justify-center gap-4 mb-14">
             <button
               onClick={() => setAnnual(false)}
               className={`text-sm font-medium transition-colors ${
@@ -115,7 +115,7 @@ export function PricingSection() {
             </button>
             <button
               onClick={() => setAnnual(!annual)}
-              className={`relative w-12 h-6 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              className={`relative w-12 h-6 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                 annual ? "bg-accent" : "bg-[var(--color-border)]"
               }`}
               role="switch"
@@ -142,7 +142,7 @@ export function PricingSection() {
           </div>
 
           {/* Plan cards */}
-          <div className="grid lg:grid-cols-3 gap-6 items-center">
+          <div className="grid lg:grid-cols-3 gap-6 items-stretch">
             {plans.map((plan) => (
               <div
                 key={plan.name}

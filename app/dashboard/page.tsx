@@ -21,28 +21,25 @@ export default async function DashboardPage() {
 
   const modules = (rawModules || []) as Module[];
 
-  // Fetch completion + assignment counts
+  const admin = await createAdminClient();
+
+  // Fetch completion + assignment counts from module_completions
   const moduleIds = modules.map((m) => m.id);
   const completionCounts: Record<string, number> = {};
   const assignmentCounts: Record<string, number> = {};
 
   if (moduleIds.length > 0) {
-    const [completionRes, assignmentRes] = await Promise.all([
-      supabase
-        .from("completions")
-        .select("module_id")
-        .in("module_id", moduleIds),
-      supabase
-        .from("assignments")
-        .select("module_id")
-        .in("module_id", moduleIds),
-    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: mcData } = await (admin as any)
+      .from("module_completions")
+      .select("module_id, completed_at")
+      .in("module_id", moduleIds);
 
-    (completionRes.data as { module_id: string }[] | null)?.forEach((c) => {
-      completionCounts[c.module_id] = (completionCounts[c.module_id] || 0) + 1;
-    });
-    (assignmentRes.data as { module_id: string }[] | null)?.forEach((a) => {
-      assignmentCounts[a.module_id] = (assignmentCounts[a.module_id] || 0) + 1;
+    (mcData as { module_id: string; completed_at: string | null }[] | null)?.forEach((row) => {
+      assignmentCounts[row.module_id] = (assignmentCounts[row.module_id] || 0) + 1;
+      if (row.completed_at) {
+        completionCounts[row.module_id] = (completionCounts[row.module_id] || 0) + 1;
+      }
     });
   }
 
@@ -60,7 +57,6 @@ export default async function DashboardPage() {
   const teamMemberCount = (teamData as { id: string }[] | null)?.length ?? 0;
 
   // Fetch tracks with module count
-  const admin = await createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: rawTracks } = await (admin as any)
     .from("tracks")

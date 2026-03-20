@@ -56,7 +56,7 @@ export function DashboardContent({ modules, tracks, teamMemberCount }: Dashboard
             <>
               <Button variant="ghost" size="md" onClick={() => setImportOpen(true)}>
                 <Upload className="h-4 w-4" />
-                Import SOPs
+                Import Existing SOPs
               </Button>
               <Link href="/dashboard/modules/new">
                 <Button variant="primary" size="md">

@@ -15,7 +15,7 @@ interface SOPEditorProps {
 }
 
 export function SOPEditor({ value, onChange, readOnly = false, loading = false }: SOPEditorProps) {
-  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [mode, setMode] = useState<"edit" | "preview">("preview");
 
   return (
     <div className="flex flex-col gap-3">

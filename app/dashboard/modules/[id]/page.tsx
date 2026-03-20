@@ -13,6 +13,8 @@ import {
   Send,
   BarChart3,
   AlertTriangle,
+  Info,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
@@ -41,6 +43,8 @@ export default function ModuleDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
   const [showCompletionStatus, setShowCompletionStatus] = useState(false);
+
+  const [readyBannerDismissed, setReadyBannerDismissed] = useState(false);
 
   // Refine SOP state
   const [refineOpen, setRefineOpen] = useState(false);
@@ -74,6 +78,7 @@ export default function ModuleDetailPage() {
 
   useEffect(() => {
     fetchModule();
+    if (localStorage.getItem(`traindrop_ready_banner_${id}`)) setReadyBannerDismissed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -154,6 +159,11 @@ export default function ModuleDetailPage() {
     setRefining(false);
   }
 
+  function dismissReadyBanner() {
+    localStorage.setItem(`traindrop_ready_banner_${id}`, "1");
+    setReadyBannerDismissed(true);
+  }
+
   async function handleDelete() {
     setDeleting(true);
     const res = await fetch(`/api/modules/${id}`, { method: "DELETE" });
@@ -231,7 +241,13 @@ export default function ModuleDetailPage() {
                 <Save className="h-4 w-4" />
                 Save
               </Button>
-              <Button variant="primary" size="sm" onClick={handlePublish} loading={publishing}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handlePublish}
+                loading={publishing}
+                title="Make this module shareable with your team"
+              >
                 <Globe className="h-4 w-4" />
                 Publish
               </Button>
@@ -277,6 +293,28 @@ export default function ModuleDetailPage() {
         <ProcessingStatus moduleId={id} inputType={module.input_type} onComplete={fetchModule} />
       ) : (
         <div className="flex flex-col gap-6">
+          {/* "What's next?" banner — shown when module is ready but not yet published */}
+          {module.status === "ready" && !readyBannerDismissed && (
+            <div className="flex items-start gap-3 bg-accent/5 border border-accent/20 rounded-xl p-4">
+              <Info className="h-5 w-5 text-accent shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-text-primary">Your module is ready!</p>
+                <p className="text-sm text-text-secondary mt-0.5">
+                  Review the SOP below, then click{" "}
+                  <span className="font-semibold text-text-primary">Publish</span> above to make it
+                  shareable with your team.
+                </p>
+              </div>
+              <button
+                onClick={dismissReadyBanner}
+                className="text-text-secondary hover:text-text-primary transition-colors p-1 rounded-md hover:bg-white/5 shrink-0"
+                title="Dismiss"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Error banner */}
           {module.status === "error" && (
             <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/30 rounded-xl p-4">

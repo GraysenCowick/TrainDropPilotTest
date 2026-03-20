@@ -7,12 +7,12 @@ async function getStats() {
   const admin = await createAdminClient();
 
   const [
-    { count: totalUsers },
+    { data: usersData },
     { count: totalModules },
     { count: totalTracks },
     { count: totalCompletions },
   ] = await Promise.all([
-    (admin as any).from("profiles").select("*", { count: "exact", head: true }),
+    (admin as any).auth.admin.listUsers({ perPage: 1000 }),
     (admin as any).from("modules").select("*", { count: "exact", head: true }),
     (admin as any).from("tracks").select("*", { count: "exact", head: true }),
     (admin as any)
@@ -20,6 +20,8 @@ async function getStats() {
       .select("*", { count: "exact", head: true })
       .not("completed_at", "is", null),
   ]);
+
+  const totalUsers = (usersData as any)?.users?.length ?? (usersData as any)?.total ?? 0;
 
   // Active today: distinct user_ids from modules + tracks created in last 24h
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

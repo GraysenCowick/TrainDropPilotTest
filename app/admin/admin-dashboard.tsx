@@ -100,7 +100,8 @@ export default function AdminDashboard({
       if (
         event.table_name === "module_completions" &&
         event.event_type === "UPDATE" &&
-        (event.payload?.completed_at as string)
+        ((event.payload?.completed_at as string) ||
+          event.description?.toLowerCase().includes("completed a module"))
       ) {
         setStats((s) => ({
           ...s,
@@ -110,6 +111,24 @@ export default function AdminDashboard({
     },
     []
   );
+
+  // Refresh stats from server every 30 seconds so numbers stay accurate
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const res = await fetch("/api/admin/stats");
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data);
+        }
+      } catch {
+        // silently ignore network errors
+      }
+    };
+
+    const interval = setInterval(refresh, 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const channel = supabase

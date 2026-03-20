@@ -92,7 +92,8 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", module.id);
-  } catch {
+  } catch (err) {
+    console.error("[import-sop] generateSOP failed:", err instanceof Error ? err.message : err);
     await admin
       .from("modules")
       .update({ status: "error", updated_at: new Date().toISOString() })

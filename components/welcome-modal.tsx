@@ -22,17 +22,17 @@ export function WelcomeModal() {
 
   const steps = [
     {
-      icon: <Video className="h-4.5 w-4.5 text-accent" />,
+      icon: <Video className="h-4 w-4 text-accent" />,
       title: "Record or type it out",
       desc: "Film yourself doing the task on your phone, or paste your rough notes. Unscripted is fine.",
     },
     {
-      icon: <Wand2 className="h-4.5 w-4.5 text-accent" />,
+      icon: <Wand2 className="h-4 w-4 text-accent" />,
       title: "AI builds the training module",
       desc: "TrainDrop transcribes your video, writes a clean step-by-step SOP, and adds captions. Ready in minutes.",
     },
     {
-      icon: <Send className="h-4.5 w-4.5 text-accent" />,
+      icon: <Send className="h-4 w-4 text-accent" />,
       title: "Send it. See who finishes.",
       desc: "Email your team a unique link. No employee accounts needed — they just click and complete.",
     },

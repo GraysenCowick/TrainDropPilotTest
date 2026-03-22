@@ -196,7 +196,7 @@ export default function NewTrackPage() {
           <h2 className="text-sm font-semibold text-text-primary mb-3">
             Track Contents
             <span className="ml-2 text-xs text-text-secondary font-normal">
-              {selectedIds.length} module{selectedIds.length !== 1 ? "s" : ""} · drag to reorder
+              {selectedIds.length} module{selectedIds.length !== 1 ? "s" : ""} · use arrows to reorder
             </span>
           </h2>
 

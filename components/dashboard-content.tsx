@@ -84,7 +84,7 @@ export function DashboardContent({ modules, tracks, teamMemberCount }: Dashboard
             <>
               <Button variant="ghost" size="md" onClick={() => setImportOpen(true)}>
                 <Upload className="h-4 w-4" />
-                Import Existing SOPs
+                <span className="hidden sm:inline">Import Existing SOPs</span>
               </Button>
               <Link href="/dashboard/modules/new">
                 <Button variant="primary" size="md">
@@ -242,6 +242,13 @@ function GettingStartedChecklist({
         >
           <X className="h-3.5 w-3.5" />
         </button>
+      </div>
+      {/* Progress bar */}
+      <div className="h-1 bg-white/5 rounded-full overflow-hidden mb-3">
+        <div
+          className="h-full bg-accent rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${(completedCount / steps.length) * 100}%` }}
+        />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
         {steps.map((step, i) => (

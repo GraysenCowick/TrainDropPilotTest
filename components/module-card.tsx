@@ -58,7 +58,7 @@ export function ModuleCard({ module }: ModuleCardProps) {
                   <FileText className="h-4 w-4 text-text-secondary" />
                 )}
               </div>
-              <h3 className="text-sm font-semibold text-text-primary leading-tight truncate">
+              <h3 className="text-sm font-semibold text-text-primary leading-tight truncate group-hover:text-accent transition-colors">
                 {truncate(module.title, 40)}
               </h3>
             </div>

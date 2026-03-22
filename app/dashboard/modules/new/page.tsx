@@ -442,7 +442,7 @@ export default function NewModulePage() {
 
         {tab === "text" ? (
           <Textarea
-            label="Raw Notes"
+            label="Your Notes"
             value={rawNotes}
             onChange={(e) => setRawNotes(e.target.value)}
             placeholder="Paste your bullet points, rough notes, or step-by-step instructions here. Don't worry about formatting — we'll clean it up."

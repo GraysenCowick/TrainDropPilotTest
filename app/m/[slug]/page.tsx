@@ -348,11 +348,11 @@ export default function PublicModulePage() {
       <Dialog
         open={showModal}
         onClose={() => {}}
-        title="Who are you?"
+        title="Before you start"
         description={
           token
             ? "Enter your name so your manager can track your training completion."
-            : "Enter your name and email so your manager can track your completion."
+            : "Enter your name and email so your manager can track your progress."
         }
       >
         <form onSubmit={handleEmployeeSubmit} className="flex flex-col gap-4">

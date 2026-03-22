@@ -215,8 +215,8 @@ export default function ModuleDetailPage() {
           )}
           <div className="flex items-center gap-2 mt-2">
             <StatusBadge status={module.status} />
-            <span className="text-xs text-text-secondary capitalize">
-              {module.input_type} module
+            <span className="text-xs text-text-secondary">
+              {module.input_type === "video" ? "Video module" : "Notes module"}
             </span>
           </div>
         </div>

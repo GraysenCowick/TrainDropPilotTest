@@ -73,10 +73,11 @@ export default function LandingPage() {
 
       {/* Trust bar */}
       <section className="border-y border-[var(--color-border)] py-5 px-4">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-16">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-12 lg:gap-16">
           {[
             { emoji: "🏢", text: "Built for small businesses" },
-            { emoji: "📍", text: "Built in Lincoln, NE" },
+            { emoji: "📱", text: "Works on any device" },
+            { emoji: "📍", text: "Made in Lincoln, NE" },
           ].map(({ emoji, text }, i) => (
             <div key={i} className="flex items-center gap-2 text-sm text-text-secondary">
               <span>{emoji}</span>

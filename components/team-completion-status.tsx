@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, Clock, Timer } from "lucide-react";
+import { CheckCircle2, Clock, Timer, RefreshCw } from "lucide-react";
 import { formatRelativeDate } from "@/lib/utils";
 
 interface ModuleCompletionRow {
@@ -76,6 +76,17 @@ export function TeamCompletionStatus({ moduleId }: TeamCompletionStatusProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Refresh button */}
+      <div className="flex justify-end">
+        <button
+          onClick={fetchStatus}
+          className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <RefreshCw className="h-3 w-3" />
+          Refresh
+        </button>
+      </div>
+
       {/* Summary stats */}
       <div className="grid grid-cols-2 gap-3">
         {[

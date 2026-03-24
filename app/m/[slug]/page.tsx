@@ -52,6 +52,7 @@ export default function PublicModulePage() {
   const [completed, setCompleted] = useState(false);
   const [completedAt, setCompletedAt] = useState<string | null>(null);
   const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
 
   // Time tracking
   const startTimeRef = useRef<number>(Date.now());
@@ -150,6 +151,8 @@ export default function PublicModulePage() {
       const data = await res.json();
       setCompleted(true);
       setCompletedAt(data.completed_at ?? new Date().toISOString());
+    } else {
+      setCompleteError("Something went wrong. Please try again.");
     }
     setCompleting(false);
   }
@@ -330,7 +333,7 @@ export default function PublicModulePage() {
               <Button
                 variant="primary"
                 size="lg"
-                onClick={handleComplete}
+                onClick={() => { setCompleteError(null); handleComplete(); }}
                 loading={completing}
                 disabled={!canComplete}
                 className="mt-2"
@@ -338,6 +341,9 @@ export default function PublicModulePage() {
                 <CheckCircle2 className="h-4 w-4" />
                 Mark as Complete
               </Button>
+              {completeError && (
+                <p className="text-xs text-red-400 mt-1">{completeError}</p>
+              )}
             </div>
           )}
         </div>

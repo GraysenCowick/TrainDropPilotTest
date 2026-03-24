@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
-import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -8,7 +8,6 @@ interface Params {
 
 export async function POST(request: NextRequest, { params }: Params) {
   const { id } = await params;
-  const supabase = await createClient();
   const body = await request.json();
   const { employee_name, employee_email, unique_token, time_spent_seconds } = body;
 
@@ -16,27 +15,27 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "employee_name is required" }, { status: 400 });
   }
 
+  // Use admin client throughout — this endpoint is called by unauthenticated employees.
+  // Regular createClient() with no session would be blocked by RLS on modules table.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = (await createAdminClient()) as any;
+  const now = new Date().toISOString();
+
   // Verify module exists and is published
-  const { data: rawModule } = await supabase
+  const { data: moduleRow } = await admin
     .from("modules")
     .select("id, status, user_id")
     .eq("id", id)
     .eq("status", "published")
     .single();
 
-  if (!rawModule) {
+  if (!moduleRow) {
     return NextResponse.json({ error: "Module not found or not published" }, { status: 404 });
   }
 
-  const moduleRow = rawModule as { id: string; status: string; user_id: string };
-  const now = new Date().toISOString();
-  const adminSupabase = await createAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adminAny = adminSupabase as any;
-
   if (unique_token) {
-    // Token path: update the existing module_completions row
-    const { error: updateError } = await adminAny
+    // Token path: employee arrived via a sent link — update their existing row
+    const { error: updateError } = await admin
       .from("module_completions")
       .update({
         completed_at: now,
@@ -49,10 +48,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
   } else if (employee_email?.trim()) {
-    // Share-link path: find or create a team member, then upsert module_completions
+    // Public share-link path: find or create a team member, then upsert module_completions
     const email = employee_email.trim().toLowerCase();
 
-    const { data: existingMember } = await adminAny
+    const { data: existingMember } = await admin
       .from("team_members")
       .select("id")
       .eq("email", email)
@@ -62,7 +61,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     let teamMemberId: string | null = existingMember?.id ?? null;
 
     if (!teamMemberId) {
-      const { data: newMember, error: insertMemberError } = await adminAny
+      const { data: newMember, error: insertMemberError } = await admin
         .from("team_members")
         .insert({ user_id: moduleRow.user_id, name: employee_name.trim(), email })
         .select("id")
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "Failed to resolve team member" }, { status: 500 });
     }
 
-    const { data: existingCompletion } = await adminAny
+    const { data: existingCompletion } = await admin
       .from("module_completions")
       .select("id")
       .eq("module_id", id)
@@ -85,7 +84,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       .single();
 
     if (existingCompletion) {
-      await adminAny
+      await admin
         .from("module_completions")
         .update({
           completed_at: now,
@@ -93,7 +92,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         })
         .eq("id", existingCompletion.id);
     } else {
-      const { error: insertError } = await adminAny
+      const { error: insertError } = await admin
         .from("module_completions")
         .insert({
           module_id: id,

@@ -72,7 +72,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     || (profile as { business_name: string | null; email: string } | null)?.email?.split("@")[0]
     || "Your Manager";
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // Derive the base URL from the request so links always point back to the
+  // same deployment that created the module_completions token — not a hardcoded domain.
+  const proto = request.headers.get("x-forwarded-proto") || "https";
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || "localhost:3000";
+  const appUrl = `${proto}://${host}`;
   const adminSupabase = await createAdminClient();
 
   const results: { memberId: string; email: string; success: boolean; error?: string; token?: string }[] = [];

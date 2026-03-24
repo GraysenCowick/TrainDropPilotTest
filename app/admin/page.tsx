@@ -21,32 +21,23 @@ async function getStats() {
       .not("completed_at", "is", null),
   ]);
 
-  const totalUsers = (usersData as any)?.users?.length ?? (usersData as any)?.total ?? 0;
+  const users: any[] = (usersData as any)?.users ?? [];
+  const totalUsers = users.length;
 
-  // Active today: distinct user_ids from modules + tracks created in last 24h
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: recentModules }, { data: recentTracks }] = await Promise.all([
-    (admin as any)
-      .from("modules")
-      .select("user_id")
-      .gte("created_at", since),
-    (admin as any)
-      .from("tracks")
-      .select("user_id")
-      .gte("created_at", since),
-  ]);
-
-  const activeSet = new Set([
-    ...((recentModules || []) as any[]).map((r) => r.user_id),
-    ...((recentTracks || []) as any[]).map((r) => r.user_id),
-  ]);
+  // Active today = managers who signed in since midnight (calendar day)
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayStart = todayMidnight.toISOString();
+  const activeToday = users.filter(
+    (u: any) => u.last_sign_in_at && u.last_sign_in_at >= todayStart
+  ).length;
 
   return {
-    totalUsers: totalUsers ?? 0,
+    totalUsers,
     totalModules: totalModules ?? 0,
     totalTracks: totalTracks ?? 0,
     totalCompletions: totalCompletions ?? 0,
-    activeToday: activeSet.size,
+    activeToday,
   };
 }
 

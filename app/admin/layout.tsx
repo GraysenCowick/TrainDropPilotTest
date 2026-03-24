@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
-const ADMIN_EMAIL = "graysencowick67@gmail.com";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "graysencowick67@gmail.com";
 
 export default async function AdminLayout({
   children,

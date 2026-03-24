@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { Resend } from "resend";
 
-const ADMIN_EMAIL = "graysencowick67@gmail.com";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "graysencowick67@gmail.com";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface AdminEvent {

@@ -12,13 +12,14 @@ export async function DELETE() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = (await createAdminClient()) as any;
 
+  // deleteUser cascades via ON DELETE CASCADE on all FK constraints.
+  // profiles, modules, tracks, team_members and all dependent rows are removed automatically.
   const { error } = await admin.auth.admin.deleteUser(user.id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Sign out the session after deletion
   await supabase.auth.signOut();
 
   return NextResponse.json({ success: true });

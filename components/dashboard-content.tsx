@@ -45,9 +45,10 @@ interface DashboardContentProps {
   modules: EnrichedModule[];
   tracks: EnrichedTrack[];
   teamMemberCount: number;
+  userId: string;
 }
 
-export function DashboardContent({ modules, tracks, teamMemberCount }: DashboardContentProps) {
+export function DashboardContent({ modules, tracks, teamMemberCount, userId }: DashboardContentProps) {
   const [tab, setTab] = useState<Tab>("modules");
   const [importOpen, setImportOpen] = useState(false);
   const [teamCount, setTeamCount] = useState(teamMemberCount);
@@ -65,7 +66,7 @@ export function DashboardContent({ modules, tracks, teamMemberCount }: Dashboard
 
   return (
     <div>
-      <WelcomeModal />
+      <WelcomeModal userId={userId} />
 
       {/* Getting Started checklist */}
       <GettingStartedChecklist

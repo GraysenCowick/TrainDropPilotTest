@@ -70,5 +70,5 @@ export default async function DashboardPage() {
     track_modules: undefined,
   }));
 
-  return <DashboardContent modules={enrichedModules} tracks={tracks} teamMemberCount={teamMemberCount} />;
+  return <DashboardContent modules={enrichedModules} tracks={tracks} teamMemberCount={teamMemberCount} userId={user.id} />;
 }

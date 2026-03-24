@@ -6,17 +6,16 @@ import { Video, Wand2, Send, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 
-const STORAGE_KEY = "traindrop_welcome_seen";
-
-export function WelcomeModal() {
+export function WelcomeModal({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
+  const storageKey = `traindrop_welcome_seen_${userId}`;
 
   useEffect(() => {
-    if (!localStorage.getItem(STORAGE_KEY)) setOpen(true);
-  }, []);
+    if (!localStorage.getItem(storageKey)) setOpen(true);
+  }, [storageKey]);
 
   function dismiss() {
-    localStorage.setItem(STORAGE_KEY, "1");
+    localStorage.setItem(storageKey, "1");
     setOpen(false);
   }
 

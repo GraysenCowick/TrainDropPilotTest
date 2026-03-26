@@ -11,6 +11,7 @@ export interface SOPResult {
 
 export interface TranscriptAnalysisResult {
   title: string;
+  description: string;
   cleaned_transcript: string;
   sop_content: string;
   chapters: Array<{
@@ -111,7 +112,7 @@ export async function analyzeTranscript(
 ): Promise<TranscriptAnalysisResult> {
   const message = await client.messages.create({
     model: "claude-opus-4-6",
-    max_tokens: 8192,
+    max_tokens: 16384,
     messages: [
       {
         role: "user",
@@ -150,12 +151,15 @@ One short paragraph summarizing the procedure and the expected outcome when done
 Return ONLY valid JSON with no text before or after it:
 {
   "title": "Clear, specific title for this training procedure (max 60 chars)",
+  "description": "1-2 sentence overview of what this training covers (used as a subtitle under the module title)",
   "cleaned_transcript": "Full transcript with proper punctuation, capitalization, and paragraph breaks. Keep all original words and content — just clean up the formatting.",
   "sop_content": "The complete professional SOP document following the structure above, written in markdown.",
   "chapters": [
     {"title": "Chapter name", "start_time": 0, "summary": "One sentence on what this section covers"}
   ]
 }
+
+Generate 4-8 chapters appropriate for the length of the video. Each chapter should cover a distinct phase or topic.
 
 Transcript:
 ${transcript}`,

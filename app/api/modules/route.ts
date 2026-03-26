@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateSOP } from "@/lib/ai/claude";
-import { runVideoPipeline } from "@/lib/video/pipeline";
-
-export const maxDuration = 300;
+import { submitTranscriptionJob } from "@/lib/video/pipeline";
 
 export async function GET() {
   const supabase = await createClient();
@@ -25,7 +23,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { input_type, title, raw_notes, original_video_url, audio_url } = body;
+  const { input_type, title, description, raw_notes, original_video_url } = body;
 
   if (!input_type || !["text", "video"].includes(input_type)) {
     return NextResponse.json({ error: "Invalid input_type" }, { status: 400 });
@@ -33,8 +31,8 @@ export async function POST(request: NextRequest) {
   if (input_type === "text" && !raw_notes) {
     return NextResponse.json({ error: "raw_notes required for text modules" }, { status: 400 });
   }
-  if (input_type === "video" && (!original_video_url || !audio_url)) {
-    return NextResponse.json({ error: "original_video_url and audio_url required" }, { status: 400 });
+  if (input_type === "video" && !original_video_url) {
+    return NextResponse.json({ error: "original_video_url required" }, { status: 400 });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,7 +42,8 @@ export async function POST(request: NextRequest) {
     .from("modules")
     .insert({
       user_id: user.id,
-      title: title || (input_type === "text" ? "Processing..." : "Processing..."),
+      title: title || "Processing...",
+      description: description || null,
       status: "processing",
       input_type,
       raw_notes: raw_notes || null,
@@ -73,15 +72,12 @@ export async function POST(request: NextRequest) {
       }).eq("id", module.id);
     }
   } else {
-    // Video: run the full pipeline synchronously (Whisper + Claude = ~30–90s).
-    // maxDuration = 300s so there is plenty of headroom.
-    // This replaces the old after() fire-and-forget which was unreliable on Vercel.
+    // Video: submit to AssemblyAI async, return immediately
     try {
-      await runVideoPipeline(module.id, original_video_url, audio_url);
+      await submitTranscriptionJob(module.id, original_video_url);
     } catch (err) {
-      console.error("Video pipeline failed:", err);
-      // runVideoPipeline already marks the module as "error" in the DB.
-      // Return the ID anyway so the client can navigate to the error state.
+      console.error("AssemblyAI submission failed:", err);
+      await admin.from("modules").update({ status: "error" }).eq("id", module.id);
     }
   }
 

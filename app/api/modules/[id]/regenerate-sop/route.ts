@@ -3,7 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { generateSOP, analyzeTranscript } from "@/lib/ai/claude";
 import { generateVTT } from "@/lib/video/subtitles";
 import type { Module } from "@/lib/supabase/types";
-import type { WhisperTranscript } from "@/lib/ai/whisper";
+// WhisperTranscript-compatible shape (also works with AAI transcript format)
+interface StoredTranscript {
+  text: string;
+  words?: Array<{ word?: string; text?: string; start: number; end: number }>;
+  segments?: Array<{ text: string; start: number; end: number }>;
+}
 
 export const maxDuration = 120;
 
@@ -68,9 +73,15 @@ export async function POST(request: NextRequest, { params }: Params) {
       .eq("id", id);
 
     try {
-      const storedTranscript = existingModule.transcript as unknown as WhisperTranscript;
+      const storedTranscript = existingModule.transcript as unknown as StoredTranscript;
       const analysis = await analyzeTranscript(storedTranscript.text);
-      const vttContent = generateVTT(storedTranscript.words ?? [], storedTranscript.segments ?? []);
+      // Normalize words: AAI stores { text, start, end }, Whisper stores { word, start, end }
+      const vttWords = (storedTranscript.words ?? []).map((w) => ({
+        word: w.word ?? w.text ?? "",
+        start: w.start,
+        end: w.end,
+      }));
+      const vttContent = generateVTT(vttWords, storedTranscript.segments ?? []);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)

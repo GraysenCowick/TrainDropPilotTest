@@ -36,7 +36,9 @@ export default function ModuleDetailPage() {
   const [module, setModule] = useState<Module | null>(null);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
   const [sopContent, setSopContent] = useState("");
+  const [quizScores, setQuizScores] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -82,6 +84,14 @@ export default function ModuleDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+    if (!showCompletionStatus) return;
+    fetch(`/api/modules/${id}/quiz-scores`)
+      .then((r) => r.ok ? r.json() : [])
+      .then((data) => setQuizScores(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, [showCompletionStatus, id]);
+
   async function fetchModule() {
     const res = await fetch(`/api/modules/${id}`);
     if (!res.ok) {
@@ -91,6 +101,7 @@ export default function ModuleDetailPage() {
     const data = await res.json();
     setModule(data);
     setTitle(data.title || "");
+    setDescription(data.description || "");
     setSopContent(data.sop_content || "");
     setLoading(false);
     refreshRefineCount();
@@ -101,7 +112,7 @@ export default function ModuleDetailPage() {
     const res = await fetch(`/api/modules/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, sop_content: sopContent }),
+      body: JSON.stringify({ title, description, sop_content: sopContent }),
     });
 
     if (res.ok) {
@@ -212,6 +223,15 @@ export default function ModuleDetailPage() {
             <h1 className="text-2xl font-bold text-text-primary">
               {module.title}
             </h1>
+          )}
+          {module.status !== "processing" && (
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full text-sm text-text-secondary bg-transparent border-none outline-none focus:ring-0 resize-none placeholder:text-text-secondary/50 mt-1"
+              placeholder="Add a description..."
+              rows={2}
+            />
           )}
           <div className="flex items-center gap-2 mt-2">
             <StatusBadge status={module.status} />
@@ -341,6 +361,33 @@ export default function ModuleDetailPage() {
                 Completion Status
               </h2>
               <TeamCompletionStatus moduleId={id} />
+              {quizScores.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold text-text-primary mb-3">Quiz Scores</h3>
+                  <div className="flex flex-col gap-2">
+                    {quizScores.map((s) => (
+                      <div key={s.completion_id} className="flex items-center justify-between py-2 border-b border-[var(--color-border)]/50 last:border-0">
+                        <div>
+                          <p className="text-sm text-text-primary">{s.employee_name}</p>
+                          <p className="text-xs text-text-secondary">{s.employee_email}</p>
+                        </div>
+                        <div className="text-right">
+                          {s.quiz_score !== null ? (
+                            <span className={`text-sm font-semibold ${s.quiz_score >= 70 ? 'text-green-400' : 'text-yellow-400'}`}>
+                              {s.quiz_score}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-secondary">Not attempted</span>
+                          )}
+                          {s.quiz_attempted > 0 && (
+                            <p className="text-xs text-text-secondary">{s.quiz_correct}/{s.quiz_attempted} correct</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

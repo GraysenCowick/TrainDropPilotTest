@@ -49,7 +49,7 @@ export function ProcessingStatus({
           {
             icon: <FileText className="h-4 w-4" />,
             label: "Transcribing video",
-            description: "Converting speech to text with Whisper",
+            description: "Converting speech to text with AssemblyAI",
           },
           {
             icon: <Wand2 className="h-4 w-4" />,
@@ -60,6 +60,11 @@ export function ProcessingStatus({
             icon: <Loader2 className="h-4 w-4" />,
             label: "Generating captions",
             description: "Creating subtitles from transcription",
+          },
+          {
+            icon: <Wand2 className="h-4 w-4" />,
+            label: "Generating quizzes",
+            description: "Creating training assessment questions",
           },
           {
             icon: <CheckCircle2 className="h-4 w-4" />,
@@ -75,6 +80,17 @@ export function ProcessingStatus({
     }, inputType === "text" ? 3000 : 6000);
     return () => clearInterval(interval);
   }, [steps.length, inputType]);
+
+  // Poll status API every 15s for video modules (triggers AAI check + analysis kickoff)
+  useEffect(() => {
+    if (inputType !== "video") return;
+    const poll = setInterval(async () => {
+      try {
+        await fetch(`/api/modules/${moduleId}/status`);
+      } catch { /* ignore */ }
+    }, 15_000);
+    return () => clearInterval(poll);
+  }, [moduleId, inputType]);
 
   // Subscribe to Supabase Realtime for status changes
   useEffect(() => {
@@ -136,7 +152,7 @@ export function ProcessingStatus({
       <p className="text-sm text-text-secondary mb-10 max-w-xs">
         {inputType === "text"
           ? "Claude is generating your SOP. This usually takes 15–30 seconds."
-          : "This takes 2–5 minutes for video processing. Feel free to come back later."}
+          : "This may take 5–15 minutes for longer videos. You can close this tab and come back — we'll have it ready for you."}
       </p>
 
       {/* Steps */}

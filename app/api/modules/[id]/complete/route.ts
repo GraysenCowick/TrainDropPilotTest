@@ -108,5 +108,31 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
-  return NextResponse.json({ completed_at: now }, { status: 201 });
+  // Fetch the completion row id so the employee page can submit quiz responses
+  let completionId: string | null = null;
+  if (unique_token) {
+    const { data: completionRow } = await admin
+      .from("module_completions")
+      .select("id")
+      .eq("unique_token", unique_token)
+      .eq("module_id", id)
+      .single();
+    completionId = completionRow?.id ?? null;
+  } else if (employee_email?.trim()) {
+    const email = employee_email.trim().toLowerCase();
+    const { data: completionRow } = await admin
+      .from("module_completions")
+      .select("id")
+      .eq("module_id", id)
+      .eq("team_member_id", (await admin
+        .from("team_members")
+        .select("id")
+        .eq("email", email)
+        .eq("user_id", moduleRow.user_id)
+        .single()).data?.id ?? "")
+      .single();
+    completionId = completionRow?.id ?? null;
+  }
+
+  return NextResponse.json({ id: completionId, completed_at: now }, { status: 201 });
 }

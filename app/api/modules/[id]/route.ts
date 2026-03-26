@@ -42,6 +42,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if ("title" in body) updates.title = body.title;
+  if ("description" in body) updates.description = body.description;
   if ("sop_content" in body) updates.sop_content = body.sop_content;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

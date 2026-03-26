@@ -342,7 +342,9 @@ export default function ModuleDetailPage() {
               <div>
                 <p className="text-sm font-semibold text-red-400">Processing failed</p>
                 <p className="text-sm text-text-secondary mt-0.5">
-                  Something went wrong while processing this module. Try regenerating the SOP, or delete this module and re-upload your content.
+                  {module.processing_step
+                    ? module.processing_step
+                    : "Something went wrong while processing this module. Delete and re-upload."}
                 </p>
               </div>
             </div>

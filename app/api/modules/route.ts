@@ -73,11 +73,23 @@ export async function POST(request: NextRequest) {
     }
   } else {
     // Video: submit to AssemblyAI async, return immediately
-    try {
-      await submitTranscriptionJob(module.id, original_video_url);
-    } catch (err) {
-      console.error("AssemblyAI submission failed:", err);
-      await admin.from("modules").update({ status: "error" }).eq("id", module.id);
+    if (!process.env.ASSEMBLYAI_API_KEY) {
+      console.error("[modules] ASSEMBLYAI_API_KEY is not set");
+      await admin.from("modules").update({
+        status: "error",
+        processing_step: "Config error: ASSEMBLYAI_API_KEY env var is not set in Vercel",
+      }).eq("id", module.id);
+    } else {
+      try {
+        await submitTranscriptionJob(module.id, original_video_url);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        console.error("AssemblyAI submission failed:", reason);
+        await admin.from("modules").update({
+          status: "error",
+          processing_step: reason.slice(0, 500),
+        }).eq("id", module.id);
+      }
     }
   }
 

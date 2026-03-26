@@ -119,28 +119,28 @@ export async function runModuleAnalysis(moduleId: string): Promise<void> {
 
     console.log(`[pipeline] ${moduleId} — generating quizzes`);
 
-    // ── Step 4: Generate quiz questions ───────────────────────────────────
-    let questions: Awaited<ReturnType<typeof generateQuizQuestions>> = [];
+    // ── Steps 4+5: Generate and save quiz questions ───────────────────────
+    // Failures here must NEVER block the module from becoming ready.
     try {
-      questions = await generateQuizQuestions(transcriptData.text, analysis.chapters);
+      const questions = await generateQuizQuestions(transcriptData.text, analysis.chapters);
+      if (questions.length > 0) {
+        const { error: quizInsertError } = await supabase.from("quiz_questions").insert(
+          questions.map((q) => ({
+            module_id: moduleId,
+            chapter_index: q.chapter_index,
+            question: q.question,
+            options: q.options,
+            correct_answer: q.correct_answer,
+            explanation: q.explanation,
+            sort_order: q.sort_order,
+          }))
+        );
+        if (quizInsertError) {
+          console.error(`[pipeline] ${moduleId} — quiz insert failed:`, quizInsertError.message);
+        }
+      }
     } catch (quizErr) {
-      // Quiz generation failure should not block the module from becoming ready
-      console.error(`[pipeline] ${moduleId} — quiz generation failed:`, quizErr);
-    }
-
-    // ── Step 5: Save quiz questions ───────────────────────────────────────
-    if (questions.length > 0) {
-      await supabase.from("quiz_questions").insert(
-        questions.map((q) => ({
-          module_id: moduleId,
-          chapter_index: q.chapter_index,
-          question: q.question,
-          options: q.options,
-          correct_answer: q.correct_answer,
-          explanation: q.explanation,
-          sort_order: q.sort_order,
-        }))
-      );
+      console.error(`[pipeline] ${moduleId} — quiz generation/save failed:`, quizErr);
     }
 
     // ── Step 6: Finalize ──────────────────────────────────────────────────

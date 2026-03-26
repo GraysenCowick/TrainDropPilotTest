@@ -81,16 +81,23 @@ export function ProcessingStatus({
     return () => clearInterval(interval);
   }, [steps.length, inputType]);
 
-  // Poll status API every 15s for video modules (triggers AAI check + analysis kickoff)
+  // Poll status API every 15s for video modules (triggers AAI check + analysis kickoff).
+  // Also react directly to the response so errors surface immediately.
   useEffect(() => {
     if (inputType !== "video") return;
     const poll = setInterval(async () => {
       try {
-        await fetch(`/api/modules/${moduleId}/status`);
+        const res = await fetch(`/api/modules/${moduleId}/status`);
+        if (res.ok) {
+          const data = await res.json() as { status: string };
+          if (data.status === "ready" || data.status === "published" || data.status === "error") {
+            onComplete ? onComplete() : router.refresh();
+          }
+        }
       } catch { /* ignore */ }
     }, 15_000);
     return () => clearInterval(poll);
-  }, [moduleId, inputType]);
+  }, [moduleId, inputType, onComplete, router]);
 
   // Subscribe to Supabase Realtime for status changes
   useEffect(() => {

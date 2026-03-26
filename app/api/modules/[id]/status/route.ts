@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { checkTranscriptionJob } from "@/lib/video/pipeline";
+import { checkTranscriptionJob, runModuleAnalysis } from "@/lib/video/pipeline";
 
-export const maxDuration = 30;
+// Must be high enough to cover AssemblyAI check + full Claude analysis + quiz generation
+export const maxDuration = 300;
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
@@ -31,8 +32,10 @@ export async function GET(
     const aaiStatus = await checkTranscriptionJob(module.transcription_job_id);
 
     if (aaiStatus.status === "completed" && aaiStatus.text) {
-      // Store transcript and trigger analysis
-      await admin
+      // Atomically transition from "transcribing" → "analyzing".
+      // The .eq("processing_step", "transcribing") filter means only one concurrent
+      // request can win this update — prevents duplicate analysis runs.
+      const { data: won } = await admin
         .from("modules")
         .update({
           transcript: {
@@ -42,26 +45,25 @@ export async function GET(
           processing_step: "analyzing",
           updated_at: new Date().toISOString(),
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("processing_step", "transcribing")
+        .select("id")
+        .single();
 
-      // Fire-and-forget: trigger run-analysis as independent request
-      const proto = request.headers.get("x-forwarded-proto") || "http";
-      const host =
-        request.headers.get("x-forwarded-host") ||
-        request.headers.get("host") ||
-        "localhost:3000";
-      const baseUrl = `${proto}://${host}`;
+      if (won) {
+        // This request won the race — run the full analysis in-process.
+        // Vercel keeps the function alive until we return, so no fire-and-forget needed.
+        try {
+          await runModuleAnalysis(id);
+          return NextResponse.json({ status: "ready", step: null });
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          console.error("[status] runModuleAnalysis failed:", reason);
+          return NextResponse.json({ status: "error", step: null });
+        }
+      }
 
-      void fetch(`${baseUrl}/api/modules/${id}/run-analysis`, {
-        method: "POST",
-        headers: {
-          "x-internal-key": process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          "Content-Type": "application/json",
-        },
-      }).catch((err) => {
-        console.error("[status] run-analysis trigger failed:", err);
-      });
-
+      // Lost the race — another concurrent request is running analysis
       return NextResponse.json({ status: "processing", step: "analyzing" });
     }
 
@@ -76,7 +78,7 @@ export async function GET(
     return NextResponse.json({ status: "processing", step: "transcribing" });
   }
 
-  // Already in analyzing or quizzes step
+  // Already in analyzing or quizzes step (another concurrent call is handling it)
   return NextResponse.json({
     status: "processing",
     step: module.processing_step ?? "analyzing",

@@ -78,7 +78,31 @@ export async function GET(
     return NextResponse.json({ status: "processing", step: "transcribing" });
   }
 
-  // Already in analyzing or quizzes step (another concurrent call is handling it)
+  // Module is stuck in "analyzing" or "quizzes" — transcript is already stored.
+  // Re-trigger analysis. Use an atomic no-op update to win the race against
+  // concurrent polls: only proceed if updated_at hasn't changed in 3+ minutes
+  // (i.e., no other request is actively running analysis).
+  const staleAt = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const { data: wonStuck } = await admin
+    .from("modules")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("status", "processing")
+    .lt("updated_at", staleAt)
+    .select("id")
+    .single();
+
+  if (wonStuck) {
+    try {
+      await runModuleAnalysis(id);
+      return NextResponse.json({ status: "ready", step: null });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("[status] re-triggered analysis failed:", reason);
+      return NextResponse.json({ status: "error", step: null });
+    }
+  }
+
   return NextResponse.json({
     status: "processing",
     step: module.processing_step ?? "analyzing",

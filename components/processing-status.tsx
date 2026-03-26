@@ -108,7 +108,7 @@ export function ProcessingStatus({
         },
         (payload) => {
           const newStatus = payload.new?.status as ModuleStatus;
-          if (newStatus === "ready" || newStatus === "published") {
+          if (newStatus === "ready" || newStatus === "published" || newStatus === "error") {
             onComplete ? onComplete() : router.refresh();
           }
         }
@@ -124,7 +124,7 @@ export function ProcessingStatus({
         .single();
 
       const row = data as { status: ModuleStatus } | null;
-      if (row?.status === "ready" || row?.status === "published") {
+      if (row?.status === "ready" || row?.status === "published" || row?.status === "error") {
         onComplete ? onComplete() : router.refresh();
       }
     }, 5000);

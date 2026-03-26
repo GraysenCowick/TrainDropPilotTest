@@ -162,7 +162,7 @@ export async function runModuleAnalysis(moduleId: string): Promise<void> {
       .from("modules")
       .update({
         status: "error",
-        processing_step: null,
+        processing_step: reason.slice(0, 500),
         updated_at: new Date().toISOString(),
       })
       .eq("id", moduleId);

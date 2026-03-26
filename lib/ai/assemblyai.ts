@@ -1,7 +1,10 @@
-import { AssemblyAI } from "assemblyai";
+const BASE_URL = "https://api.assemblyai.com/v2";
 
-function getClient() {
-  return new AssemblyAI({ apiKey: process.env.ASSEMBLYAI_API_KEY! });
+function authHeaders() {
+  return {
+    authorization: process.env.ASSEMBLYAI_API_KEY!,
+    "content-type": "application/json",
+  };
 }
 
 export interface AAIWord {
@@ -10,49 +13,60 @@ export interface AAIWord {
   end: number;
 }
 
-export interface AAIChapter {
-  headline: string;
-  summary: string;
-  start: number; // ms
-  end: number;
-}
-
 export interface AAITranscriptResult {
   id: string;
   status: "queued" | "processing" | "completed" | "error";
   text: string | null;
   words: AAIWord[] | null;
-  chapters: AAIChapter[] | null;
   error?: string | null;
 }
 
+/**
+ * Submit a video/audio URL to AssemblyAI for transcription.
+ * Returns the job ID immediately — does not wait for completion.
+ * NOTE: auto_chapters is intentionally omitted — Claude generates chapters instead.
+ */
 export async function submitTranscription(audioUrl: string): Promise<string> {
-  const client = getClient();
-  const job = await client.transcripts.submit({
-    audio_url: audioUrl,
-    auto_chapters: true,
+  const res = await fetch(`${BASE_URL}/transcript`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ audio_url: audioUrl }),
   });
-  return job.id;
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`AssemblyAI submit failed (HTTP ${res.status}): ${body}`);
+  }
+
+  const data = await res.json();
+  if (!data.id) throw new Error("AssemblyAI submit returned no job ID");
+  return data.id as string;
 }
 
+/**
+ * Check the status of an AssemblyAI transcription job.
+ */
 export async function getTranscriptionStatus(jobId: string): Promise<AAITranscriptResult> {
-  const client = getClient();
-  const result = await client.transcripts.get(jobId);
+  const res = await fetch(`${BASE_URL}/transcript/${jobId}`, {
+    headers: { authorization: process.env.ASSEMBLYAI_API_KEY! },
+  });
+
+  if (!res.ok) {
+    throw new Error(`AssemblyAI status check failed (HTTP ${res.status})`);
+  }
+
+  const data = await res.json();
   return {
-    id: result.id,
-    status: result.status as AAITranscriptResult["status"],
-    text: result.text ?? null,
-    words: result.words
-      ? result.words.map((w) => ({ text: w.text ?? "", start: w.start ?? 0, end: w.end ?? 0 }))
-      : null,
-    chapters: result.chapters
-      ? result.chapters.map((c) => ({
-          headline: c.headline ?? "",
-          summary: c.summary ?? "",
-          start: c.start ?? 0,
-          end: c.end ?? 0,
+    id: data.id,
+    status: data.status as AAITranscriptResult["status"],
+    text: data.text ?? null,
+    words: data.words
+      ? (data.words as Array<{ text: string; start: number; end: number }>).map((w) => ({
+          text: w.text,
+          start: w.start,
+          end: w.end,
         }))
       : null,
-    error: result.error ?? null,
+    error: data.error ?? null,
   };
 }

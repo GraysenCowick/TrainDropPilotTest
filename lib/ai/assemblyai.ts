@@ -30,7 +30,7 @@ export async function submitTranscription(audioUrl: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/transcript`, {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ audio_url: audioUrl, speech_model: "universal-2" }),
+    body: JSON.stringify({ audio_url: audioUrl, speech_models: ["universal-2"] }),
   });
 
   if (!res.ok) {

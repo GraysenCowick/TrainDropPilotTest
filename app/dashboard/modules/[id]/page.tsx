@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,6 +15,8 @@ import {
   AlertTriangle,
   Info,
   X,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
@@ -39,6 +41,7 @@ export default function ModuleDetailPage() {
   const [description, setDescription] = useState("");
   const [sopContent, setSopContent] = useState("");
   const [quizScores, setQuizScores] = useState<any[]>([]);
+  const [selectedScore, setSelectedScore] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -47,6 +50,8 @@ export default function ModuleDetailPage() {
   const [showCompletionStatus, setShowCompletionStatus] = useState(false);
 
   const [readyBannerDismissed, setReadyBannerDismissed] = useState(false);
+
+  const refineRef = useRef<HTMLDivElement>(null);
 
   // Refine SOP state
   const [refineOpen, setRefineOpen] = useState(false);
@@ -83,6 +88,12 @@ export default function ModuleDetailPage() {
     if (localStorage.getItem(`traindrop_ready_banner_${id}`)) setReadyBannerDismissed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (refineOpen) {
+      refineRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [refineOpen]);
 
   useEffect(() => {
     if (!showCompletionStatus) return;
@@ -375,9 +386,12 @@ export default function ModuleDetailPage() {
                         </div>
                         <div className="text-right">
                           {s.quiz_score !== null ? (
-                            <span className={`text-sm font-semibold ${s.quiz_score >= 70 ? 'text-green-400' : 'text-yellow-400'}`}>
+                            <button
+                              onClick={() => setSelectedScore(s)}
+                              className={`text-sm font-semibold underline decoration-dotted underline-offset-2 cursor-pointer ${s.quiz_score >= 70 ? 'text-green-400 hover:text-green-300' : 'text-yellow-400 hover:text-yellow-300'}`}
+                            >
                               {s.quiz_score}%
-                            </span>
+                            </button>
                           ) : (
                             <span className="text-xs text-text-secondary">Not attempted</span>
                           )}
@@ -389,6 +403,81 @@ export default function ModuleDetailPage() {
                     ))}
                   </div>
                 </div>
+              )}
+
+              {/* Quiz detail modal */}
+              {selectedScore && (
+                <Dialog
+                  open={!!selectedScore}
+                  onClose={() => setSelectedScore(null)}
+                  title={`${selectedScore.employee_name}'s Results`}
+                  description={`${selectedScore.quiz_correct} of ${selectedScore.quiz_attempted} correct — ${selectedScore.quiz_score}%`}
+                >
+                  <div className="flex flex-col gap-6 max-h-[60vh] overflow-y-auto pr-1">
+                    {(() => {
+                      const responses: any[] = selectedScore.responses || [];
+                      if (responses.length === 0) {
+                        return <p className="text-sm text-text-secondary">No responses recorded.</p>;
+                      }
+
+                      // Group by section: chapter_index >= 0 = chapter quizzes, -1 = final test
+                      const sections: Array<{ label: string; items: any[] }> = [];
+                      let currentChapter = -999;
+                      responses.forEach((r: any) => {
+                        const label = r.chapter_index === -1 ? "Final Test" : `Section ${r.chapter_index + 1} Quiz`;
+                        if (r.chapter_index !== currentChapter) {
+                          sections.push({ label, items: [] });
+                          currentChapter = r.chapter_index;
+                        }
+                        sections[sections.length - 1].items.push(r);
+                      });
+
+                      return sections.map((section, si) => (
+                        <div key={si}>
+                          <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-3">{section.label}</p>
+                          <div className="flex flex-col gap-5">
+                            {section.items.map((r: any, qi: number) => (
+                              <div key={r.question_id}>
+                                <div className="flex items-start gap-2 mb-2">
+                                  {r.is_correct
+                                    ? <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0 mt-0.5" />
+                                    : <XCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />}
+                                  <p className="text-sm font-medium text-text-primary">
+                                    {qi + 1}. {r.question}
+                                  </p>
+                                </div>
+                                <div className="flex flex-col gap-1.5 pl-6">
+                                  {(r.options as string[]).map((opt: string, oi: number) => {
+                                    const isSelected = r.selected_answer === oi;
+                                    const isCorrect = r.correct_answer === oi;
+                                    let cls = "flex items-center gap-2 px-3 py-2 rounded-lg text-xs border ";
+                                    if (isCorrect) cls += "border-green-500/50 bg-green-500/10 text-green-400";
+                                    else if (isSelected && !isCorrect) cls += "border-red-500/50 bg-red-500/10 text-red-400";
+                                    else cls += "border-[var(--color-border)] text-text-secondary";
+                                    return (
+                                      <div key={oi} className={cls}>
+                                        <span className="shrink-0 font-medium">{String.fromCharCode(65 + oi)}.</span>
+                                        <span>{opt.replace(/^[A-D]\.\s*/, "")}</span>
+                                        {isSelected && !isCorrect && <span className="ml-auto shrink-0 font-medium">Your answer</span>}
+                                        {isCorrect && <span className="ml-auto shrink-0 font-medium">Correct</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {r.explanation && (
+                                  <p className="text-xs text-text-secondary mt-2 pl-6">
+                                    <span className="font-semibold text-accent">Explanation: </span>
+                                    {r.explanation}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </Dialog>
               )}
             </div>
           )}
@@ -415,7 +504,7 @@ export default function ModuleDetailPage() {
 
           {/* Refine panel */}
           {refineOpen && (
-            <div className="bg-surface border border-accent/20 rounded-xl p-4 flex flex-col gap-3">
+            <div ref={refineRef} className="bg-surface border border-accent/20 rounded-xl p-4 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <Wand2 className="h-4 w-4 text-accent" />
                 <p className="text-sm font-medium text-text-primary">Refine SOP with AI</p>

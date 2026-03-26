@@ -30,6 +30,9 @@ export default function SignupPage() {
       password,
       options: {
         emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || window.location.origin}/auth/callback`,
+        data: {
+          business_name: businessName.trim() || null,
+        },
       },
     });
 
@@ -37,14 +40,6 @@ export default function SignupPage() {
       setError(signUpError.message);
       setLoading(false);
       return;
-    }
-
-    if (data.user && businessName.trim()) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (supabase as any)
-        .from("profiles")
-        .update({ business_name: businessName.trim() })
-        .eq("id", data.user.id);
     }
 
     // If session is already set, email confirmation is disabled — go straight to dashboard.

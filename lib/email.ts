@@ -118,6 +118,111 @@ export async function sendModuleLink({
   return data;
 }
 
+interface SendBugReportParams {
+  description: string;
+  userEmail: string;
+  businessName: string | null;
+  userId: string;
+}
+
+export async function sendBugReport({
+  description,
+  userEmail,
+  businessName,
+  userId,
+}: SendBugReportParams) {
+  const from = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const timestamp = new Date().toLocaleString("en-US", { timeZone: "UTC", dateStyle: "full", timeStyle: "long" });
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:24px;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e0e0;">
+  <h2 style="color:#ff6b6b;margin:0 0 16px;">🐛 Bug Report — TrainDrop</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;">
+    <tr><td style="padding:8px 0;color:#a0a0a0;width:140px;">Business</td><td style="padding:8px 0;">${businessName || "(not set)"}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">Email</td><td style="padding:8px 0;">${userEmail}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">User ID</td><td style="padding:8px 0;font-size:12px;color:#606060;">${userId}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">Timestamp</td><td style="padding:8px 0;">${timestamp}</td></tr>
+  </table>
+  <hr style="border:none;border-top:1px solid #2a2a2a;margin:16px 0;" />
+  <p style="color:#a0a0a0;margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Description</p>
+  <p style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:16px;white-space:pre-wrap;margin:0;font-size:14px;line-height:1.6;">${description.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+</body>
+</html>
+  `.trim();
+
+  const { error } = await resend.emails.send({
+    from,
+    to: "graysencowick67@gmail.com",
+    subject: `[TrainDrop Bug] ${businessName || userEmail}`,
+    html,
+  });
+
+  if (error) throw new Error(error.message || "Failed to send bug report");
+}
+
+interface SendErrorReportParams {
+  errorMessage: string;
+  stackTrace: string | null;
+  pageUrl: string | null;
+  note: string | null;
+  userEmail: string;
+  businessName: string | null;
+  userId: string;
+}
+
+export async function sendErrorReport({
+  errorMessage,
+  stackTrace,
+  pageUrl,
+  note,
+  userEmail,
+  businessName,
+  userId,
+}: SendErrorReportParams) {
+  const from = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
+  const timestamp = new Date().toLocaleString("en-US", { timeZone: "UTC", dateStyle: "full", timeStyle: "long" });
+
+  const noteSection = note
+    ? `<hr style="border:none;border-top:1px solid #2a2a2a;margin:16px 0;" /><p style="color:#a0a0a0;margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">User Note</p><p style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:16px;white-space:pre-wrap;margin:0;font-size:14px;line-height:1.6;">${note.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`
+    : "";
+
+  const stackSection = stackTrace
+    ? `<hr style="border:none;border-top:1px solid #2a2a2a;margin:16px 0;" /><p style="color:#a0a0a0;margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Stack Trace</p><pre style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:16px;margin:0;font-size:11px;overflow-x:auto;white-space:pre-wrap;color:#e0e0e0;">${stackTrace.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`
+    : "";
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:24px;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e0e0e0;">
+  <h2 style="color:#ff6b6b;margin:0 0 16px;">🚨 Automatic Error Report — TrainDrop</h2>
+  <table style="width:100%;border-collapse:collapse;font-size:14px;">
+    <tr><td style="padding:8px 0;color:#a0a0a0;width:140px;">Business</td><td style="padding:8px 0;">${businessName || "(not set)"}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">Email</td><td style="padding:8px 0;">${userEmail}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">User ID</td><td style="padding:8px 0;font-size:12px;color:#606060;">${userId}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">Page</td><td style="padding:8px 0;">${pageUrl || "(unknown)"}</td></tr>
+    <tr><td style="padding:8px 0;color:#a0a0a0;">Timestamp</td><td style="padding:8px 0;">${timestamp}</td></tr>
+  </table>
+  <hr style="border:none;border-top:1px solid #2a2a2a;margin:16px 0;" />
+  <p style="color:#a0a0a0;margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Error</p>
+  <p style="background:#1a1a1a;border:1px solid #ff4444;border-radius:8px;padding:16px;white-space:pre-wrap;margin:0;font-size:14px;line-height:1.6;color:#ff8888;">${errorMessage.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>
+  ${noteSection}
+  ${stackSection}
+</body>
+</html>
+  `.trim();
+
+  const { error } = await resend.emails.send({
+    from,
+    to: "graysencowick67@gmail.com",
+    subject: `[TrainDrop Error] ${businessName || userEmail}: ${errorMessage.slice(0, 60)}`,
+    html,
+  });
+
+  if (error) throw new Error(error.message || "Failed to send error report");
+}
+
 interface SendTrackLinkParams {
   to: string;
   employeeName: string;

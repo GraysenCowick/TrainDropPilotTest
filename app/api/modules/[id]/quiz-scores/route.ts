@@ -44,19 +44,49 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Get all quiz questions for score calculation
+  // Get all quiz questions with full detail for the drill-down view
   const { data: questions } = await admin
     .from("quiz_questions")
-    .select("id, chapter_index")
-    .eq("module_id", moduleId);
+    .select("id, chapter_index, question, options, correct_answer, explanation, sort_order")
+    .eq("module_id", moduleId)
+    .order("chapter_index")
+    .order("sort_order");
 
   const totalQuestions = questions?.length ?? 0;
+
+  // Build a lookup map: question_id → question details
+  const questionMap: Record<string, any> = {};
+  (questions || []).forEach((q: any) => { questionMap[q.id] = q; });
 
   const result = (completions || []).map((c: any) => {
     const responses = c.quiz_responses || [];
     const correct = responses.filter((r: any) => r.is_correct).length;
     const attempted = responses.length;
     const score = attempted > 0 ? Math.round((correct / attempted) * 100) : null;
+
+    // Build per-question detail sorted by chapter then sort_order
+    const responseDetail = responses
+      .map((r: any) => {
+        const q = questionMap[r.question_id];
+        if (!q) return null;
+        return {
+          question_id: r.question_id,
+          chapter_index: q.chapter_index,
+          sort_order: q.sort_order,
+          question: q.question,
+          options: q.options,
+          correct_answer: q.correct_answer,
+          explanation: q.explanation,
+          selected_answer: r.selected_answer,
+          is_correct: r.is_correct,
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) =>
+        a.chapter_index !== b.chapter_index
+          ? a.chapter_index - b.chapter_index
+          : a.sort_order - b.sort_order
+      );
 
     return {
       completion_id: c.id,
@@ -68,6 +98,7 @@ export async function GET(
       quiz_correct: correct,
       quiz_attempted: attempted,
       quiz_total: totalQuestions,
+      responses: responseDetail,
     };
   });
 

@@ -35,6 +35,41 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (unique_token) {
     // Token path: employee arrived via a sent link — update their existing row
+
+    // Backend quiz validation: require all questions answered before completing
+    const { data: tokenCompletion } = await admin
+      .from("module_completions")
+      .select("id")
+      .eq("unique_token", unique_token)
+      .eq("module_id", id)
+      .single();
+
+    if (tokenCompletion) {
+      const { data: allQuestions } = await admin
+        .from("quiz_questions")
+        .select("id")
+        .eq("module_id", id);
+
+      if (allQuestions && allQuestions.length > 0) {
+        const { data: responses } = await admin
+          .from("quiz_responses")
+          .select("question_id")
+          .eq("module_completion_id", tokenCompletion.id);
+
+        const answeredIds = new Set(
+          (responses as { question_id: string }[] | null || []).map((r) => r.question_id)
+        );
+        const allAnswered = (allQuestions as { id: string }[]).every((q) => answeredIds.has(q.id));
+
+        if (!allAnswered) {
+          return NextResponse.json(
+            { error: "All quiz and test questions must be answered before completing this module." },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const { error: updateError } = await admin
       .from("module_completions")
       .update({

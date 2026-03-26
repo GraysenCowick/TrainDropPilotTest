@@ -5,6 +5,29 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatRelativeDate } from "@/lib/utils";
 
+interface ActiveUser {
+  user_id: string;
+  email: string;
+  business_name: string | null;
+  current_page: string;
+  last_seen_at: string;
+}
+
+function formatPage(page: string): string {
+  if (page === "/dashboard") return "Dashboard";
+  if (page.startsWith("/dashboard/modules/new")) return "Modules · New";
+  if (page.startsWith("/dashboard/modules/")) return "Modules · Detail";
+  if (page.startsWith("/dashboard/tracks/new")) return "Tracks · New";
+  if (page.startsWith("/dashboard/tracks/")) return "Tracks · Detail";
+  if (page.startsWith("/dashboard/settings")) return "Settings";
+  if (page.startsWith("/dashboard")) return "Dashboard";
+  return page;
+}
+
+function secondsAgo(iso: string): number {
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+}
+
 interface AdminStats {
   totalUsers: number;
   totalModules: number;
@@ -61,6 +84,7 @@ export default function AdminDashboard({
 }) {
   const [events, setEvents] = useState<ActivityEvent[]>(initialEvents);
   const [stats, setStats] = useState(initialStats);
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [isLive, setIsLive] = useState(false);
   const [hasPulse, setHasPulse] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -154,6 +178,33 @@ export default function AdminDashboard({
       feedRef.current.scrollTop = 0;
     }
   }, [events, autoScroll]);
+
+  // Fetch active users on mount and subscribe to presence changes
+  useEffect(() => {
+    async function fetchActiveUsers() {
+      try {
+        const res = await fetch("/api/admin/active-users");
+        if (res.ok) setActiveUsers(await res.json());
+      } catch { /* ignore */ }
+    }
+
+    fetchActiveUsers();
+
+    const channel = supabase
+      .channel("admin-presence")
+      .on("postgres_changes" as any, { event: "*", schema: "public", table: "user_presence" }, () => {
+        fetchActiveUsers();
+      })
+      .subscribe();
+
+    // Also re-fetch every 30s to drop users who went inactive
+    const interval = setInterval(fetchActiveUsers, 30_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
+  }, [supabase]);
 
   const filteredEvents = events.filter((event) => {
     if (filterTable !== "all" && event.table_name !== filterTable) return false;
@@ -273,6 +324,34 @@ export default function AdminDashboard({
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Active users */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+            <span className="text-xs font-semibold text-zinc-300 uppercase tracking-widest">Active Now</span>
+            <span className="text-xs text-zinc-600 ml-1">{activeUsers.length} user{activeUsers.length !== 1 ? "s" : ""}</span>
+          </div>
+          {activeUsers.length === 0 ? (
+            <p className="text-xs text-zinc-600">No users active in the last 90 seconds.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {activeUsers.map((u) => (
+                <div key={u.user_id} className="flex items-center gap-2.5 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                  <div>
+                    <p className="text-xs font-medium text-zinc-200 leading-none">
+                      {u.business_name || u.email}
+                    </p>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">
+                      {formatPage(u.current_page)} · {secondsAgo(u.last_seen_at)}s ago
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Filter bar */}

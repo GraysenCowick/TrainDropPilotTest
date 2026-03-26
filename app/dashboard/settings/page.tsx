@@ -22,6 +22,10 @@ export default function SettingsPage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [bugDescription, setBugDescription] = useState("");
+  const [submittingBug, setSubmittingBug] = useState(false);
+  const [bugSubmitted, setBugSubmitted] = useState(false);
   const [userId, setUserId] = useState("");
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -96,6 +100,24 @@ export default function SettingsPage() {
       setConfirmPassword("");
     }
     setSavingPassword(false);
+  }
+
+  async function handleBugReport(e: React.FormEvent) {
+    e.preventDefault();
+    if (!bugDescription.trim()) return;
+    setSubmittingBug(true);
+    const res = await fetch("/api/bug-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: bugDescription }),
+    });
+    if (res.ok) {
+      setBugSubmitted(true);
+      setBugDescription("");
+    } else {
+      toast("Failed to send bug report. Please try again.", "error");
+    }
+    setSubmittingBug(false);
   }
 
   async function handleDeleteAccount() {
@@ -201,6 +223,43 @@ export default function SettingsPage() {
         </form>
       </section>
 
+      {/* Report a Bug */}
+      <section className="bg-surface border border-[var(--color-border)] rounded-xl p-6 mb-6">
+        <h2 className="text-sm font-semibold text-text-primary mb-1">Report a Bug</h2>
+        <p className="text-xs text-text-secondary mb-4">
+          Found something broken? Describe the issue and we&apos;ll look into it.
+        </p>
+        {bugSubmitted ? (
+          <div className="flex items-center gap-2 text-sm text-accent">
+            <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Bug report sent. Thanks for the feedback!
+          </div>
+        ) : (
+          <form onSubmit={handleBugReport} className="flex flex-col gap-3">
+            <textarea
+              value={bugDescription}
+              onChange={(e) => setBugDescription(e.target.value)}
+              placeholder="Describe what happened and how to reproduce it…"
+              rows={4}
+              className="w-full bg-background border border-[var(--color-border)] rounded-lg px-3 py-2.5 text-sm text-text-primary placeholder:text-text-secondary resize-none focus:outline-none focus:ring-2 focus:ring-accent/30"
+            />
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                loading={submittingBug}
+                disabled={!bugDescription.trim()}
+              >
+                Send Report
+              </Button>
+            </div>
+          </form>
+        )}
+      </section>
+
       {/* Danger zone */}
       <section className="bg-red-500/5 border border-red-500/20 rounded-xl p-6">
         <h2 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h2>
@@ -219,21 +278,37 @@ export default function SettingsPage() {
 
       <Dialog
         open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
+        onClose={() => { setDeleteDialogOpen(false); setDeleteConfirmText(""); }}
         title="Delete Account"
         description="This will permanently delete your account and all training modules. This cannot be undone."
       >
-        <div className="flex gap-3 justify-end">
-          <Button variant="ghost" onClick={() => setDeleteDialogOpen(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDeleteAccount}
-            loading={deleting}
-          >
-            Delete My Account
-          </Button>
+        <div className="flex flex-col gap-4">
+          <div>
+            <p className="text-sm text-text-secondary mb-2">
+              Type <span className="font-mono font-semibold text-text-primary">DELETE</span> to confirm.
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="DELETE"
+              className="w-full bg-background border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              autoComplete="off"
+            />
+          </div>
+          <div className="flex gap-3 justify-end">
+            <Button variant="ghost" onClick={() => { setDeleteDialogOpen(false); setDeleteConfirmText(""); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              loading={deleting}
+              disabled={deleteConfirmText !== "DELETE"}
+            >
+              Delete My Account
+            </Button>
+          </div>
         </div>
       </Dialog>
     </div>

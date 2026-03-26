@@ -42,6 +42,7 @@ function QuizCard({
   answers,
   onAnswer,
   onSubmit,
+  isTest = false,
 }: {
   title: string;
   questions: QuizQuestion[];
@@ -50,6 +51,7 @@ function QuizCard({
   answers: Record<string, number>;
   onAnswer: (questionId: string, answer: number) => void;
   onSubmit: () => Promise<void>;
+  isTest?: boolean;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const allAnswered = questions.every(q => answers[q.id] !== undefined);
@@ -122,7 +124,7 @@ function QuizCard({
           loading={submitting}
           disabled={!allAnswered}
         >
-          Submit Quiz
+          {isTest ? "Submit Test" : "Submit Quiz"}
         </Button>
       )}
     </div>
@@ -163,7 +165,14 @@ export default function PublicModulePage() {
   // Time tracking
   const startTimeRef = useRef<number>(Date.now());
 
-  const canComplete = (!module?.processed_video_url || videoProgress >= 80) && !completed;
+  const allQuizzesSubmitted = (() => {
+    if (quizQuestions.length === 0) return true;
+    const chapterIndices = [...new Set(quizQuestions.filter(q => q.chapter_index >= 0).map(q => q.chapter_index))];
+    const hasFinalTest = quizQuestions.some(q => q.chapter_index === -1);
+    return chapterIndices.every(idx => quizSubmitted[idx]) && (!hasFinalTest || quizSubmitted[-1]);
+  })();
+
+  const canComplete = (!module?.processed_video_url || videoProgress >= 80) && !completed && allQuizzesSubmitted;
 
   useEffect(() => {
     async function init() {
@@ -275,7 +284,8 @@ export default function PublicModulePage() {
         setCompletionId(data.id);
       }
     } else {
-      setCompleteError("Something went wrong. Please try again.");
+      const errData = await res.json().catch(() => ({}));
+      setCompleteError((errData as { error?: string }).error || "Something went wrong. Please try again.");
     }
     setCompleting(false);
   }
@@ -491,6 +501,7 @@ export default function PublicModulePage() {
                     submitted={quizSubmitted[-1]}
                     score={quizScores[-1]}
                     answers={quizAnswers}
+                    isTest
                     onAnswer={(qId, answer) => setQuizAnswers(prev => ({ ...prev, [qId]: answer }))}
                     onSubmit={async () => {
                       const responses = finalQuestions.map(q => ({
@@ -542,7 +553,9 @@ export default function PublicModulePage() {
                   Mark as Complete
                 </h3>
                 <p className="text-sm text-text-secondary max-w-xs">
-                  {!canComplete && module.processed_video_url
+                  {!canComplete && !allQuizzesSubmitted
+                    ? "Complete all quizzes and tests above before marking this module complete."
+                    : !canComplete && module?.processed_video_url
                     ? "Watch at least 80% of the video above to enable this button."
                     : "You've reviewed the material. Click to confirm completion."}
                 </p>

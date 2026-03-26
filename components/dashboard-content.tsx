@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   Plus,
   FileText,
@@ -15,11 +16,13 @@ import {
   Circle,
   X,
   ArrowRight,
+  BarChart2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { ModuleCard } from "@/components/module-card";
 import { TeamTab } from "@/components/team-tab";
+import { TrainingStatusTab } from "@/components/training-status-tab";
 import { ImportSOPModal } from "@/components/import-sop-modal";
 import { WelcomeModal } from "@/components/welcome-modal";
 import { cn } from "@/lib/utils";
@@ -39,7 +42,7 @@ interface EnrichedTrack {
   created_at: string;
 }
 
-type Tab = "modules" | "tracks" | "team";
+type Tab = "modules" | "tracks" | "team" | "status";
 
 interface DashboardContentProps {
   modules: EnrichedModule[];
@@ -48,17 +51,47 @@ interface DashboardContentProps {
   userId: string;
 }
 
-export function DashboardContent({ modules, tracks, teamMemberCount, userId }: DashboardContentProps) {
+export function DashboardContent({ modules: initialModules, tracks, teamMemberCount, userId }: DashboardContentProps) {
   const [tab, setTab] = useState<Tab>("modules");
   const [importOpen, setImportOpen] = useState(false);
   const [teamCount, setTeamCount] = useState(teamMemberCount);
+  const [modules, setModules] = useState<EnrichedModule[]>(initialModules);
 
   // Read ?tab= from URL on mount (e.g. navigated here from "Add Team Members" button)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const t = params.get("tab");
-    if (t === "modules" || t === "tracks" || t === "team") setTab(t);
+    if (t === "modules" || t === "tracks" || t === "team" || t === "status") setTab(t);
   }, []);
+
+  // Subscribe to real-time status changes for this user's modules
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("dashboard-modules")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "modules",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const updated = payload.new as Partial<EnrichedModule> & { id: string };
+          setModules((prev) =>
+            prev.map((m) =>
+              m.id === updated.id ? { ...m, ...updated } : m
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   const hasModule = modules.length > 0;
   const hasSentModule = modules.some((m) => m.assignment_count > 0);
@@ -108,10 +141,10 @@ export function DashboardContent({ modules, tracks, teamMemberCount, userId }: D
 
       {/* Tabs */}
       <div className="flex gap-1 bg-surface border border-[var(--color-border)] rounded-xl p-1 w-fit mb-6">
-        {(["modules", "tracks", "team"] as Tab[]).map((t) => {
-          const icons = { modules: <LayoutGrid className="h-4 w-4" />, tracks: <ListOrdered className="h-4 w-4" />, team: <Users className="h-4 w-4" /> };
-          const labels = { modules: "Modules", tracks: "Tracks", team: "Team" };
-          const counts = { modules: modules.length, tracks: tracks.length, team: teamCount };
+        {(["modules", "tracks", "team", "status"] as Tab[]).map((t) => {
+          const icons = { modules: <LayoutGrid className="h-4 w-4" />, tracks: <ListOrdered className="h-4 w-4" />, team: <Users className="h-4 w-4" />, status: <BarChart2 className="h-4 w-4" /> };
+          const labels = { modules: "Modules", tracks: "Tracks", team: "Team", status: "Training Status" };
+          const counts = { modules: modules.length, tracks: tracks.length, team: teamCount, status: 0 };
           return (
             <button
               key={t}
@@ -151,6 +184,8 @@ export function DashboardContent({ modules, tracks, teamMemberCount, userId }: D
       )}
 
       {tab === "team" && <TeamTab onCountChange={setTeamCount} />}
+
+      {tab === "status" && <TrainingStatusTab />}
 
       <ImportSOPModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>

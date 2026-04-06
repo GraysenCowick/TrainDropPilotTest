@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { submitTranscription, getTranscriptionStatus } from "@/lib/ai/assemblyai";
-import { analyzeTranscript } from "@/lib/ai/claude";
+import { analyzeTranscript, generateSOP } from "@/lib/ai/claude";
 import { generateQuizQuestions } from "@/lib/ai/quizzes";
 import { generateVTT } from "@/lib/video/subtitles";
 
@@ -68,6 +68,42 @@ export async function runModuleAnalysis(moduleId: string): Promise<void> {
 
   if (fetchError || !module) {
     throw new Error(`Module not found: ${moduleId}`);
+  }
+
+  // ── Text/PDF module (imported SOP) ───────────────────────────────────────
+  // These have raw_notes but no transcript. Run generateSOP and mark ready.
+  if (module.raw_notes && !module.transcript) {
+    try {
+      await supabase
+        .from("modules")
+        .update({ processing_step: "analyzing", updated_at: new Date().toISOString() })
+        .eq("id", moduleId);
+
+      console.log(`[pipeline] ${moduleId} — generating SOP from text (${(module.raw_notes as string).length} chars)`);
+      const result = await generateSOP(module.raw_notes as string);
+
+      await supabase
+        .from("modules")
+        .update({
+          title: result.title,
+          sop_content: result.sop_content,
+          status: "ready",
+          processing_step: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", moduleId);
+
+      console.log(`[pipeline] ${moduleId} — SOP ready`);
+      return;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`[pipeline] ${moduleId} — SOP generation failed: ${reason}`);
+      await supabase
+        .from("modules")
+        .update({ status: "error", processing_step: reason.slice(0, 500), updated_at: new Date().toISOString() })
+        .eq("id", moduleId);
+      throw error;
+    }
   }
 
   const transcriptData = module.transcript as {

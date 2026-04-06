@@ -27,6 +27,30 @@ export async function GET(
     return NextResponse.json({ status: module.status, step: null });
   }
 
+  // Text/PDF module awaiting SOP generation — trigger Claude in-process.
+  // Atomically transition "pending-analysis" → "analyzing" so only one request wins.
+  if (module.processing_step === "pending-analysis" && !module.transcription_job_id) {
+    const { data: won } = await admin
+      .from("modules")
+      .update({ processing_step: "analyzing", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("processing_step", "pending-analysis")
+      .select("id")
+      .single();
+
+    if (won) {
+      try {
+        await runModuleAnalysis(id);
+        return NextResponse.json({ status: "ready", step: null });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        console.error("[status] PDF SOP generation failed:", reason);
+        return NextResponse.json({ status: "error", step: null });
+      }
+    }
+    return NextResponse.json({ status: "processing", step: "analyzing" });
+  }
+
   // If transcribing, check AssemblyAI status
   if (module.processing_step === "transcribing" && module.transcription_job_id) {
     const aaiStatus = await checkTranscriptionJob(module.transcription_job_id);

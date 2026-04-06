@@ -148,7 +148,7 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
           });
         if (docUploadError) throw new Error(`Document upload failed: ${docUploadError.message}`);
 
-        // Step 3: Process document via API (passes URL, no body size limit)
+        // Step 3: Create module record — returns { id } immediately (no Claude yet)
         const res = await fetch("/api/import-sop", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -157,10 +157,28 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error((err as { error?: string }).error || "Import failed — the file may be too large or in an unsupported format.");
+          throw new Error((err as { error?: string }).error || "Import failed — could not read the file.");
         }
-        const data = await res.json();
-        updateItem(item.id, { status: "done", moduleId: data.id });
+        const { id: moduleId } = await res.json();
+
+        // Step 4: Poll status — first call triggers Claude (blocks until done),
+        // subsequent calls act as fallback in case of a transient failure.
+        let ready = false;
+        for (let attempt = 0; attempt < 30 && !ready; attempt++) {
+          if (attempt > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 5000));
+          }
+          const statusRes = await fetch(`/api/modules/${moduleId}/status`, { signal });
+          if (!statusRes.ok) continue;
+          const { status } = await statusRes.json() as { status: string };
+          if (status === "ready" || status === "published") {
+            ready = true;
+          } else if (status === "error") {
+            throw new Error("SOP generation failed. Please try again.");
+          }
+        }
+        if (!ready) throw new Error("Timed out waiting for SOP generation.");
+        updateItem(item.id, { status: "done", moduleId });
       }
       return true;
     } catch (err) {

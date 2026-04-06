@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { generateSOP } from "@/lib/ai/claude";
 
-export const maxDuration = 300;
+// Only needs to download + parse the file, not run Claude — keep this fast.
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
   try {
     if (isPDF) {
       // pdf-parse v1.1.1 — pure-JS, bundles pdfjs-dist v2, no native deps.
-      // Proven to work in serverless (no Worker threads, no @napi-rs/canvas).
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
       const pdfParse = require("pdf-parse") as any;
       const data = await pdfParse(buffer);
@@ -63,8 +62,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Claude Opus has a ~200K token context window (~800K chars). Large documents
-  // must be truncated to leave room for the prompt and response.
+  // Claude's context window is ~200K tokens (~800K chars). Truncate to be safe.
   const MAX_CHARS = 600_000;
   if (extractedText.length > MAX_CHARS) {
     console.warn(`[import-sop] Truncating extracted text from ${extractedText.length} to ${MAX_CHARS} chars`);
@@ -74,13 +72,16 @@ export async function POST(request: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = (await createAdminClient()) as any;
 
-  // Create module row
+  // Store raw_notes and return { id } immediately.
+  // SOP generation (Claude) runs asynchronously via /api/modules/[id]/status
+  // when the client polls — same pattern as video transcription.
   const { data: module, error: insertError } = await admin
     .from("modules")
     .insert({
       user_id: user.id,
-      title: "Processing...",
+      title: filename.replace(/\.[^.]+$/, ""),
       status: "processing",
+      processing_step: "pending-analysis",
       input_type: "text",
       raw_notes: extractedText,
     })
@@ -89,28 +90,6 @@ export async function POST(request: NextRequest) {
 
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
-  }
-
-  // Generate SOP synchronously (same as text module flow)
-  try {
-    const result = await generateSOP(extractedText);
-    await admin
-      .from("modules")
-      .update({
-        title: result.title,
-        sop_content: result.sop_content,
-        status: "ready",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", module.id);
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("[import-sop] generateSOP failed:", errMsg, "| text length:", extractedText.length);
-    await admin
-      .from("modules")
-      .update({ status: "error", updated_at: new Date().toISOString() })
-      .eq("id", module.id);
-    return NextResponse.json({ error: `SOP generation failed: ${errMsg}` }, { status: 500 });
   }
 
   return NextResponse.json({ id: module.id }, { status: 201 });

@@ -19,9 +19,10 @@ type Module = BaseModule & {
 
 interface ModuleCardProps {
   module: Module;
+  onDelete?: (id: string) => void;
 }
 
-export function ModuleCard({ module }: ModuleCardProps) {
+export function ModuleCard({ module, onDelete }: ModuleCardProps) {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -38,7 +39,11 @@ export function ModuleCard({ module }: ModuleCardProps) {
     const res = await fetch(`/api/modules/${module.id}`, { method: "DELETE" });
     if (res.ok) {
       setDeleteDialogOpen(false);
-      router.refresh();
+      if (onDelete) {
+        onDelete(module.id);
+      } else {
+        router.refresh();
+      }
     } else {
       setDeleting(false);
     }

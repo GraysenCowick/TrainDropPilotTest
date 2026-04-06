@@ -64,7 +64,7 @@ export function DashboardContent({ modules: initialModules, tracks, teamMemberCo
     if (t === "modules" || t === "tracks" || t === "team" || t === "status") setTab(t);
   }, []);
 
-  // Subscribe to real-time status changes for this user's modules
+  // Subscribe to real-time INSERT / UPDATE / DELETE for this user's modules
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
@@ -72,18 +72,27 @@ export function DashboardContent({ modules: initialModules, tracks, teamMemberCo
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "modules",
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          const updated = payload.new as Partial<EnrichedModule> & { id: string };
-          setModules((prev) =>
-            prev.map((m) =>
-              m.id === updated.id ? { ...m, ...updated } : m
-            )
-          );
+          if (payload.eventType === "INSERT") {
+            const inserted = payload.new as EnrichedModule;
+            setModules((prev) => {
+              if (prev.some((m) => m.id === inserted.id)) return prev;
+              return [{ ...inserted, completion_count: 0, assignment_count: 0 }, ...prev];
+            });
+          } else if (payload.eventType === "UPDATE") {
+            const updated = payload.new as Partial<EnrichedModule> & { id: string };
+            setModules((prev) =>
+              prev.map((m) => m.id === updated.id ? { ...m, ...updated } : m)
+            );
+          } else if (payload.eventType === "DELETE") {
+            const deleted = payload.old as { id: string };
+            setModules((prev) => prev.filter((m) => m.id !== deleted.id));
+          }
         }
       )
       .subscribe();
@@ -170,7 +179,13 @@ export function DashboardContent({ modules: initialModules, tracks, teamMemberCo
       {tab === "modules" && (
         modules.length === 0 ? <ModulesEmptyState /> : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {modules.map((module) => <ModuleCard key={module.id} module={module} />)}
+            {modules.map((module) => (
+              <ModuleCard
+                key={module.id}
+                module={module}
+                onDelete={(id) => setModules((prev) => prev.filter((m) => m.id !== id))}
+              />
+            ))}
           </div>
         )
       )}

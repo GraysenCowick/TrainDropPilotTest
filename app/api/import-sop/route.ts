@@ -11,19 +11,22 @@ export async function POST(request: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const formData = await request.formData();
-  const file = formData.get("file") as File;
-  if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  const body = await request.json();
+  const { file_url, filename } = body as { file_url?: string; filename?: string };
+  if (!file_url || !filename) {
+    return NextResponse.json({ error: "file_url and filename are required" }, { status: 400 });
+  }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const fileRes = await fetch(file_url);
+  if (!fileRes.ok) {
+    return NextResponse.json({ error: "Failed to fetch document from storage" }, { status: 502 });
+  }
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
   let extractedText = "";
 
-  const isPDF =
-    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  const isDOCX =
-    file.type ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    file.name.toLowerCase().endsWith(".docx");
+  const lowerName = filename.toLowerCase();
+  const isPDF = lowerName.endsWith(".pdf");
+  const isDOCX = lowerName.endsWith(".docx");
 
   try {
     if (isPDF) {

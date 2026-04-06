@@ -14,7 +14,7 @@ import {
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { isAcceptedVideo, MAX_DOCUMENT_SIZE_BYTES } from "@/lib/constants";
+import { isAcceptedVideo } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 
 type FileType = "pdf" | "docx" | "video";
@@ -129,12 +129,32 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
         const data = await modRes.json();
         updateItem(item.id, { status: "done", moduleId: data.id });
       } else {
-        if (item.file.size > MAX_DOCUMENT_SIZE_BYTES) {
-          throw new Error("File is too large. Max size for documents is 4.5MB.");
-        }
-        const fd = new FormData();
-        fd.append("file", item.file);
-        const res = await fetch("/api/import-sop", { method: "POST", body: fd, signal });
+        // Step 1: Get presigned upload URL for document
+        const docUrlRes = await fetch("/api/upload-document", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: item.file.name }),
+          signal,
+        });
+        if (!docUrlRes.ok) throw new Error("Failed to prepare document upload");
+        const { path: docPath, token: docToken, publicUrl: docPublicUrl } = await docUrlRes.json();
+
+        // Step 2: Upload document directly to Supabase (bypasses Vercel's body limit)
+        const supabase = createClient();
+        const { error: docUploadError } = await supabase.storage
+          .from("processed")
+          .uploadToSignedUrl(docPath, docToken, item.file, {
+            contentType: item.file.type || "application/octet-stream",
+          });
+        if (docUploadError) throw new Error(`Document upload failed: ${docUploadError.message}`);
+
+        // Step 3: Process document via API (passes URL, no body size limit)
+        const res = await fetch("/api/import-sop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_url: docPublicUrl, filename: item.file.name }),
+          signal,
+        });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error((err as { error?: string }).error || "Import failed — the file may be too large or in an unsupported format.");

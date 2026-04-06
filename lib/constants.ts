@@ -14,7 +14,7 @@ export const ACCEPTED_VIDEO_TYPES = [
 
 export const ACCEPTED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".avi"];
 
-export const MAX_DOCUMENT_SIZE_BYTES = 4_500_000; // Vercel's 4.5 MB request body limit
+export const MAX_DOCUMENT_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB — documents upload directly to Supabase storage
 
 export function isAcceptedVideo(file: File): boolean {
   if (ACCEPTED_VIDEO_TYPES.includes(file.type)) return true;

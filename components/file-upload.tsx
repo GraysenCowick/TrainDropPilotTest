@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Upload, X, Film, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ACCEPTED_VIDEO_TYPES, MAX_VIDEO_SIZE_BYTES, MAX_VIDEO_SIZE_MB } from "@/lib/constants";
+import { isAcceptedVideo, MAX_VIDEO_SIZE_BYTES, MAX_VIDEO_SIZE_MB } from "@/lib/constants";
 
 interface FileUploadProps {
   onFileChange: (file: File | null) => void;
@@ -17,7 +17,7 @@ export function FileUpload({ onFileChange, disabled }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = useCallback((f: File): string | null => {
-    if (!ACCEPTED_VIDEO_TYPES.includes(f.type)) {
+    if (!isAcceptedVideo(f)) {
       return `Invalid file type. Accepted: MP4, MOV, WebM, AVI`;
     }
     if (f.size > MAX_VIDEO_SIZE_BYTES) {
@@ -120,7 +120,7 @@ export function FileUpload({ onFileChange, disabled }: FileUploadProps) {
         <input
           ref={inputRef}
           type="file"
-          accept={ACCEPTED_VIDEO_TYPES.join(",")}
+          accept=".mp4,.mov,.webm,.avi,video/mp4,video/quicktime,video/webm,video/x-msvideo"
           onChange={handleInputChange}
           className="hidden"
           disabled={disabled}

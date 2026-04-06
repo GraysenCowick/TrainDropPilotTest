@@ -14,6 +14,14 @@ export const ACCEPTED_VIDEO_TYPES = [
 
 export const ACCEPTED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".avi"];
 
+export const MAX_DOCUMENT_SIZE_BYTES = 4_500_000; // Vercel's 4.5 MB request body limit
+
+export function isAcceptedVideo(file: File): boolean {
+  if (ACCEPTED_VIDEO_TYPES.includes(file.type)) return true;
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+  return ACCEPTED_VIDEO_EXTENSIONS.includes(ext);
+}
+
 export const MODULE_STATUS_LABELS = {
   processing: "Processing",
   ready: "Ready",

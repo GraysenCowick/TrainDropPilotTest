@@ -14,7 +14,7 @@ import {
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ACCEPTED_VIDEO_TYPES } from "@/lib/constants";
+import { isAcceptedVideo, MAX_DOCUMENT_SIZE_BYTES } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 
 type FileType = "pdf" | "docx" | "video";
@@ -38,7 +38,7 @@ function getFileType(file: File): FileType | null {
     name.endsWith(".docx")
   )
     return "docx";
-  if (ACCEPTED_VIDEO_TYPES.includes(file.type)) return "video";
+  if (isAcceptedVideo(file)) return "video";
   return null;
 }
 
@@ -129,12 +129,15 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
         const data = await modRes.json();
         updateItem(item.id, { status: "done", moduleId: data.id });
       } else {
+        if (item.file.size > MAX_DOCUMENT_SIZE_BYTES) {
+          throw new Error("File is too large. Max size for documents is 4.5MB.");
+        }
         const fd = new FormData();
         fd.append("file", item.file);
         const res = await fetch("/api/import-sop", { method: "POST", body: fd, signal });
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Import failed");
+          const err = await res.json().catch(() => ({}));
+          throw new Error((err as { error?: string }).error || "Import failed — the file may be too large or in an unsupported format.");
         }
         const data = await res.json();
         updateItem(item.id, { status: "done", moduleId: data.id });
@@ -227,7 +230,7 @@ export function ImportSOPModal({ open, onClose }: ImportSOPModalProps) {
             ref={inputRef}
             type="file"
             multiple
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/quicktime,video/webm,video/x-msvideo"
+            accept=".pdf,.docx,.mp4,.mov,.webm,.avi,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/quicktime,video/webm,video/x-msvideo"
             className="hidden"
             onChange={(e) => e.target.files && addFiles(e.target.files)}
           />

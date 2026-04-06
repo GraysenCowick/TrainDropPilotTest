@@ -24,7 +24,7 @@ export interface TranscriptAnalysisResult {
 export async function generateSOP(rawNotes: string): Promise<SOPResult> {
   const message = await client.messages.create({
     model: "claude-opus-4-6",
-    max_tokens: 4096,
+    max_tokens: 16384,
     messages: [
       {
         role: "user",

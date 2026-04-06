@@ -63,6 +63,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Claude Opus has a ~200K token context window (~800K chars). Large documents
+  // must be truncated to leave room for the prompt and response.
+  const MAX_CHARS = 600_000;
+  if (extractedText.length > MAX_CHARS) {
+    console.warn(`[import-sop] Truncating extracted text from ${extractedText.length} to ${MAX_CHARS} chars`);
+    extractedText = extractedText.slice(0, MAX_CHARS);
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = (await createAdminClient()) as any;
 
@@ -96,12 +104,13 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", module.id);
   } catch (err) {
-    console.error("[import-sop] generateSOP failed:", err instanceof Error ? err.message : err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("[import-sop] generateSOP failed:", errMsg, "| text length:", extractedText.length);
     await admin
       .from("modules")
       .update({ status: "error", updated_at: new Date().toISOString() })
       .eq("id", module.id);
-    return NextResponse.json({ error: "SOP generation failed" }, { status: 500 });
+    return NextResponse.json({ error: `SOP generation failed: ${errMsg}` }, { status: 500 });
   }
 
   return NextResponse.json({ id: module.id }, { status: 201 });
